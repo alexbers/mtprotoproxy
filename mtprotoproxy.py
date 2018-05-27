@@ -10,7 +10,7 @@ import random
 
 import pyaes
 
-from config import PORT, SECRET
+from config import PORT, USERS, FAST_MODE
 
 TG_DATACENTERS = [
     "149.154.175.50", "149.154.167.51", "149.154.175.100",
@@ -30,48 +30,53 @@ IV_LEN = 16
 
 def init_stats():
     global stats
-    stats = collections.Counter()
+    stats = {user: collections.Counter() for user in USERS}
 
 
-def update_stats(connects=0, curr_connects_x2=0, octets=0):
+def update_stats(user, connects=0, curr_connects_x2=0, octets=0):
     global stats
 
-    stats.update(connects=connects, curr_connects_x2=curr_connects_x2,
-                 octets=octets)
+    if user not in stats:
+        stats[user] = collections.Counter()
+
+    stats[user].update(connects=connects, curr_connects_x2=curr_connects_x2,
+                       octets=octets)
 
 
 async def handle_handshake(reader, writer):
-    secret = bytes.fromhex(SECRET)
-
     handshake = await reader.readexactly(64)
 
-    dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
-    dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
-    dec_key = hashlib.sha256(dec_prekey + secret).digest()
-    dec_ctr = pyaes.Counter(int.from_bytes(dec_iv, "big"))
-    decryptor = pyaes.AESModeOfOperationCTR(dec_key, dec_ctr)
+    for user in USERS:
+        secret = bytes.fromhex(USERS[user])
 
-    enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
-    enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
-    enc_key = hashlib.sha256(enc_prekey + secret).digest()
-    enc_ctr = pyaes.Counter(int.from_bytes(enc_iv, "big"))
-    encryptor = pyaes.AESModeOfOperationCTR(enc_key, enc_ctr)
+        dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
+        dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
+        dec_key = hashlib.sha256(dec_prekey + secret).digest()
+        dec_ctr = pyaes.Counter(int.from_bytes(dec_iv, "big"))
+        decryptor = pyaes.AESModeOfOperationCTR(dec_key, dec_ctr)
 
-    decrypted = decryptor.decrypt(handshake)
-    
-    MAGIC_VAL = b'\xef\xef\xef\xef'
-    check_val = decrypted[56:60]
-    if check_val != MAGIC_VAL:
-        return False
+        enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
+        enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
+        enc_key = hashlib.sha256(enc_prekey + secret).digest()
+        enc_ctr = pyaes.Counter(int.from_bytes(enc_iv, "big"))
+        encryptor = pyaes.AESModeOfOperationCTR(enc_key, enc_ctr)
 
-    dc_idx = int.from_bytes(decrypted[60:62], "little") - 1
+        decrypted = decryptor.decrypt(handshake)
+        
+        MAGIC_VAL = b'\xef\xef\xef\xef'
+        check_val = decrypted[56:60]
+        if check_val != MAGIC_VAL:
+            continue
 
-    if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS):
-        return False
+        dc_idx = int.from_bytes(decrypted[60:62], "little") - 1
 
-    dc = TG_DATACENTERS[dc_idx]
+        if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS):
+            continue
 
-    return encryptor, decryptor, dc
+        dc = TG_DATACENTERS[dc_idx]
+
+        return encryptor, decryptor, user, dc
+    return False
 
 
 async def do_handshake(dc):
@@ -116,9 +121,9 @@ async def handle_client(reader, writer):
         writer.close()
         return
 
-    clt_enc, clt_dec, dc = clt_data
+    clt_enc, clt_dec, user, dc = clt_data
 
-    update_stats(connects=1)
+    update_stats(user, connects=1)
 
     tg_data = await do_handshake(dc)
     if not tg_data:
@@ -127,8 +132,8 @@ async def handle_client(reader, writer):
 
     tg_enc, tg_dec, reader_tg, writer_tg = tg_data
 
-    async def connect_reader_to_writer(rd, wr, rd_dec, wr_enc):
-        update_stats(curr_connects_x2=1)
+    async def connect_reader_to_writer(rd, wr, rd_dec, wr_enc, user):
+        update_stats(user, curr_connects_x2=1)
         try:
             while True:
                 data = await rd.read(READ_BUF_SIZE)
@@ -138,7 +143,7 @@ async def handle_client(reader, writer):
                     wr.close()
                     return
                 else:
-                    update_stats(octets=len(data))
+                    update_stats(user, octets=len(data))
                     dec_data = rd_dec.decrypt(data)
                     # print("PROXYING", len(dec_data), dec_data)
                     reenc_data = wr_enc.encrypt(dec_data)
@@ -149,10 +154,10 @@ async def handle_client(reader, writer):
             wr.close()
             # print(e)
         finally:
-            update_stats(curr_connects_x2=-1)
+            update_stats(user, curr_connects_x2=-1)
 
-    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer, tg_dec, clt_enc))
-    asyncio.ensure_future(connect_reader_to_writer(reader, writer_tg, clt_dec, tg_enc))
+    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer, tg_dec, clt_enc, user))
+    asyncio.ensure_future(connect_reader_to_writer(reader, writer_tg, clt_dec, tg_enc, user))
 
 
 async def handle_client_wrapper(reader, writer):
@@ -168,9 +173,10 @@ async def stats_printer():
         await asyncio.sleep(STATS_PRINT_PERIOD)
 
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
-        print("%d connects (%d current), %.2f MB" % (
-            stats["connects"], stats["curr_connects_x2"] // 2,
-            stats["octets"] / 1000000))
+        for user, stat in stats.items():
+            print("%s: %d connects (%d current), %.2f MB" % (
+                user, stat["connects"], stat["curr_connects_x2"] // 2,
+                stat["octets"] / 1000000))
         print(flush=True)
 
 
@@ -187,10 +193,11 @@ def print_tg_info():
     if ip_is_local:
         my_ip = "YOUR_IP"
 
-    params = {
-        "server": my_ip, "port": PORT, "secret": SECRET
-    }
-    print("tg://proxy?" + urllib.parse.urlencode(params), flush=True)
+    for user, secret in USERS.items():
+        params = {
+            "server": my_ip, "port": PORT, "secret": secret
+        }
+        print("tg://proxy?" + urllib.parse.urlencode(params), flush=True)
 
 
 def main():
