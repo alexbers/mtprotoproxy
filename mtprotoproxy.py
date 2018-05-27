@@ -10,7 +10,7 @@ import random
 
 import pyaes
 
-from config import PORT, USERS, FAST_MODE
+from config import PORT, USERS
 
 TG_DATACENTERS = [
     "149.154.175.50", "149.154.167.51", "149.154.175.100",
@@ -18,6 +18,9 @@ TG_DATACENTERS = [
 ]
 
 TG_DATACENTER_PORT = 443
+
+# disables tg->client trafic reencryption, faster but less secure
+FAST_MODE = True
 
 STATS_PRINT_PERIOD = 600
 READ_BUF_SIZE = 4096
@@ -75,11 +78,11 @@ async def handle_handshake(reader, writer):
 
         dc = TG_DATACENTERS[dc_idx]
 
-        return encryptor, decryptor, user, dc
+        return encryptor, decryptor, user, dc, enc_key + enc_iv
     return False
 
 
-async def do_handshake(dc):
+async def do_handshake(dc, dec_key_and_iv=None):
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(dc, TG_DATACENTER_PORT)
     except ConnectionRefusedError as E:
@@ -92,22 +95,23 @@ async def do_handshake(dc):
     rnd[57] = 0xef
     rnd[58] = 0xef
     rnd[59] = 0xef
+
+    if dec_key_and_iv:
+        rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN] = dec_key_and_iv[::-1]
+
     rnd = bytes(rnd)
 
-    # print("rnd", [k for k in rnd])
-    dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
+    dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN][::-1]
     dec_key, dec_iv = dec_key_and_iv[:KEY_LEN], dec_key_and_iv[KEY_LEN:]
     dec_ctr = pyaes.Counter(int.from_bytes(dec_iv, "big"))
     decryptor = pyaes.AESModeOfOperationCTR(dec_key, dec_ctr)
 
-    enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
+    enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN]
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
-    # print("enc_key", [k for k in enc_key + enc_iv])
     enc_ctr = pyaes.Counter(int.from_bytes(enc_iv, "big"))
     encryptor = pyaes.AESModeOfOperationCTR(enc_key, enc_ctr)
 
     rnd_enc = rnd[:56] + encryptor.encrypt(rnd)[56:]
-    # print("buf_enc", [k for k in encryptor.encrypt(rnd)])
 
     writer_tgt.write(rnd_enc)
     await writer_tgt.drain()
@@ -121,18 +125,21 @@ async def handle_client(reader, writer):
         writer.close()
         return
 
-    clt_enc, clt_dec, user, dc = clt_data
+    clt_enc, clt_dec, user, dc, enc_key_and_iv = clt_data
 
     update_stats(user, connects=1)
 
-    tg_data = await do_handshake(dc)
+    if FAST_MODE:
+        tg_data = await do_handshake(dc, dec_key_and_iv=enc_key_and_iv)
+    else:
+        tg_data = await do_handshake(dc)
     if not tg_data:
         writer.close()
         return
 
     tg_enc, tg_dec, reader_tg, writer_tg = tg_data
 
-    async def connect_reader_to_writer(rd, wr, rd_dec, wr_enc, user):
+    async def connect_reader_to_writer(rd, wr, rd_dec, wr_enc, user, fast=False):
         update_stats(user, curr_connects_x2=1)
         try:
             while True:
@@ -144,10 +151,13 @@ async def handle_client(reader, writer):
                     return
                 else:
                     update_stats(user, octets=len(data))
-                    dec_data = rd_dec.decrypt(data)
-                    # print("PROXYING", len(dec_data), dec_data)
-                    reenc_data = wr_enc.encrypt(dec_data)
-                    wr.write(reenc_data)
+
+                    before_data = data
+                    if not fast:
+                        dec_data = rd_dec.decrypt(data)
+                        data = wr_enc.encrypt(dec_data)
+
+                    wr.write(data)
                     await wr.drain()
         except (ConnectionResetError, BrokenPipeError, OSError,
                 AttributeError) as e:
@@ -156,7 +166,7 @@ async def handle_client(reader, writer):
         finally:
             update_stats(user, curr_connects_x2=-1)
 
-    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer, tg_dec, clt_enc, user))
+    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer, tg_dec, clt_enc, user, fast=FAST_MODE))
     asyncio.ensure_future(connect_reader_to_writer(reader, writer_tg, clt_dec, tg_enc, user))
 
 
