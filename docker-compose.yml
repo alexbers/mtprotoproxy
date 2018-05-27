@@ -1,0 +1,7 @@
+version: '2.0'
+services:
+  mtprotoproxy:
+    build: .
+    restart: always
+    mem_limit: 1024m
+    network_mode: "host"
