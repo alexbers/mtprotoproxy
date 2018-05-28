@@ -25,11 +25,19 @@ except ModuleNotFoundError:
         return pyaes.AESModeOfOperationCTR(key, ctr)
 
 
-from config import PORT, USERS
+from config import PORT, PREFER_IPV6, USERS
 
-TG_DATACENTERS = [
+TG_DATACENTERS_V4 = [
     "149.154.175.50", "149.154.167.51", "149.154.175.100",
     "149.154.167.91", "149.154.171.5"
+]
+
+TG_DATACENTERS_V6 = [
+    "2001:0b28:f23d:f001:0000:0000:0000:000a",
+    "2001:067c:04e8:f002:0000:0000:0000:000a",
+    "2001:0b28:f23d:f003:0000:0000:0000:000a",
+    "2001:067c:04e8:f004:0000:0000:0000:000a",
+    "2001:0b28:f23f:f005:0000:0000:0000:000a",
 ]
 
 TG_DATACENTER_PORT = 443
@@ -88,10 +96,13 @@ async def handle_handshake(reader, writer):
 
         dc_idx = abs(int.from_bytes(decrypted[60:62], "little", signed=True)) - 1
 
-        if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS):
+        if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS_V4) or dc_idx >= len(TG_DATACENTERS_V6):
             continue
 
-        dc = TG_DATACENTERS[dc_idx]
+        if PREFER_IPV6:
+            dc = TG_DATACENTERS_V6[dc_idx]
+        else:
+            dc = TG_DATACENTERS_V4[dc_idx]
 
         return encryptor, decryptor, user, dc, enc_key + enc_iv
     return False

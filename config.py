@@ -1,4 +1,5 @@
 PORT = 3256
+PREFER_IPV6 = False
 
 # name -> secret (32 hex chars)
 USERS = {
