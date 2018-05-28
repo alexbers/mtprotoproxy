@@ -8,7 +8,22 @@ import time
 import hashlib
 import random
 
-import pyaes
+try:
+    from Crypto.Cipher import AES
+    from Crypto.Util import Counter
+
+    def create_aes(key, iv):
+        ctr = Counter.new(128, initial_value=iv)
+        return AES.new(key, AES.MODE_CTR, counter=ctr)
+
+except ModuleNotFoundError:
+    print("Failed to find pycrypto, using slow AES version", flush=True)
+    import pyaes
+
+    def create_aes(key, iv):
+        ctr = pyaes.Counter(iv)
+        return pyaes.AESModeOfOperationCTR(key, ctr)
+
 
 from config import PORT, USERS
 
@@ -55,14 +70,12 @@ async def handle_handshake(reader, writer):
         dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
         dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
         dec_key = hashlib.sha256(dec_prekey + secret).digest()
-        dec_ctr = pyaes.Counter(int.from_bytes(dec_iv, "big"))
-        decryptor = pyaes.AESModeOfOperationCTR(dec_key, dec_ctr)
+        decryptor = create_aes(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
 
         enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
         enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
         enc_key = hashlib.sha256(enc_prekey + secret).digest()
-        enc_ctr = pyaes.Counter(int.from_bytes(enc_iv, "big"))
-        encryptor = pyaes.AESModeOfOperationCTR(enc_key, enc_ctr)
+        encryptor = create_aes(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
         decrypted = decryptor.decrypt(handshake)
         
@@ -71,7 +84,7 @@ async def handle_handshake(reader, writer):
         if check_val != MAGIC_VAL:
             continue
 
-        dc_idx = int.from_bytes(decrypted[60:62], "little") - 1
+        dc_idx = abs(int.from_bytes(decrypted[60:62], "little", signed=True)) - 1
 
         if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS):
             continue
@@ -103,14 +116,12 @@ async def do_handshake(dc, dec_key_and_iv=None):
 
     dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN][::-1]
     dec_key, dec_iv = dec_key_and_iv[:KEY_LEN], dec_key_and_iv[KEY_LEN:]
-    dec_ctr = pyaes.Counter(int.from_bytes(dec_iv, "big"))
-    decryptor = pyaes.AESModeOfOperationCTR(dec_key, dec_ctr)
+    decryptor = create_aes(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
 
     enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN]
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
-    enc_ctr = pyaes.Counter(int.from_bytes(enc_iv, "big"))
-    encryptor = pyaes.AESModeOfOperationCTR(enc_key, enc_ctr)
-
+    encryptor = create_aes(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
+    
     rnd_enc = rnd[:56] + encryptor.encrypt(rnd)[56:]
 
     writer_tgt.write(rnd_enc)
