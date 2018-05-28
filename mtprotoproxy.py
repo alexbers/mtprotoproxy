@@ -44,7 +44,10 @@ SKIP_LEN = 8
 PREKEY_LEN = 32
 KEY_LEN = 32
 IV_LEN = 16
+HANDSHAKE_LEN = 64
+MAGIC_VAL_POS = 56
 
+MAGIC_VAL_TO_CHECK = b'\xef\xef\xef\xef'
 
 def init_stats():
     global stats
@@ -62,7 +65,7 @@ def update_stats(user, connects=0, curr_connects_x2=0, octets=0):
 
 
 async def handle_handshake(reader, writer):
-    handshake = await reader.readexactly(64)
+    handshake = await reader.readexactly(HANDSHAKE_LEN)
 
     for user in USERS:
         secret = bytes.fromhex(USERS[user])
@@ -79,9 +82,8 @@ async def handle_handshake(reader, writer):
 
         decrypted = decryptor.decrypt(handshake)
         
-        MAGIC_VAL = b'\xef\xef\xef\xef'
-        check_val = decrypted[56:60]
-        if check_val != MAGIC_VAL:
+        check_val = decrypted[MAGIC_VAL_POS:MAGIC_VAL_POS+4]
+        if check_val != MAGIC_VAL_TO_CHECK:
             continue
 
         dc_idx = abs(int.from_bytes(decrypted[60:62], "little", signed=True)) - 1
@@ -96,6 +98,11 @@ async def handle_handshake(reader, writer):
 
 
 async def do_handshake(dc, dec_key_and_iv=None):
+    RESERVED_NONCE_FIRST_CHARS = [b"\xef"]
+    RESERVED_NONCE_BEGININGS = [b"\x48\x45\x41\x44", b"\x50\x4F\x53\x54",
+                                b"\x47\x45\x54\x20", b"\xee\xee\xee\xee"]
+    RESERVED_NONCE_CONTINUES = [b"\x00\x00\x00\x00"]
+
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(dc, TG_DATACENTER_PORT)
     except ConnectionRefusedError as E:
@@ -103,11 +110,17 @@ async def do_handshake(dc, dec_key_and_iv=None):
     except OSError as E:
         return False
 
-    rnd = bytearray([random.randrange(0, 256) for i in range(64)])    
-    rnd[56] = 0xef
-    rnd[57] = 0xef
-    rnd[58] = 0xef
-    rnd[59] = 0xef
+    while True:
+        rnd = bytearray([random.randrange(0, 256) for i in range(HANDSHAKE_LEN)])
+        if rnd[:1] in RESERVED_NONCE_FIRST_CHARS:
+            continue
+        if rnd[:4] in RESERVED_NONCE_BEGININGS:
+            continue
+        if rnd[4:8] in RESERVED_NONCE_CONTINUES:
+            continue
+        break
+
+    rnd[MAGIC_VAL_POS:MAGIC_VAL_POS+4] = MAGIC_VAL_TO_CHECK
 
     if dec_key_and_iv:
         rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN] = dec_key_and_iv[::-1]
@@ -122,7 +135,7 @@ async def do_handshake(dc, dec_key_and_iv=None):
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
     encryptor = create_aes(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
     
-    rnd_enc = rnd[:56] + encryptor.encrypt(rnd)[56:]
+    rnd_enc = rnd[:MAGIC_VAL_POS] + encryptor.encrypt(rnd)[MAGIC_VAL_POS:]
 
     writer_tgt.write(rnd_enc)
     await writer_tgt.drain()
