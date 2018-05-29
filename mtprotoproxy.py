@@ -234,7 +234,7 @@ def print_tg_info():
     except:
         my_ip = 'YOUR_IP'
 
-    for user, secret in USERS.items():
+    for user, secret in sorted(USERS.items(), key=lambda x: x[0]):
         params = {
             "server": my_ip, "port": PORT, "secret": secret
         }
