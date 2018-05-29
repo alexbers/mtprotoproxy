@@ -49,6 +49,7 @@ MAGIC_VAL_POS = 56
 
 MAGIC_VAL_TO_CHECK = b'\xef\xef\xef\xef'
 
+
 def init_stats():
     global stats
     stats = {user: collections.Counter() for user in USERS}
@@ -81,7 +82,7 @@ async def handle_handshake(reader, writer):
         encryptor = create_aes(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
         decrypted = decryptor.decrypt(handshake)
-        
+
         check_val = decrypted[MAGIC_VAL_POS:MAGIC_VAL_POS+4]
         if check_val != MAGIC_VAL_TO_CHECK:
             continue
@@ -134,7 +135,7 @@ async def do_handshake(dc, dec_key_and_iv=None):
     enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN]
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
     encryptor = create_aes(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
-    
+
     rnd_enc = rnd[:MAGIC_VAL_POS] + encryptor.encrypt(rnd)[MAGIC_VAL_POS:]
 
     writer_tgt.write(rnd_enc)
@@ -190,7 +191,8 @@ async def handle_client(reader, writer):
         finally:
             update_stats(user, curr_connects_x2=-1)
 
-    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer, tg_dec, clt_enc, user, fast=FAST_MODE))
+    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer, tg_dec, clt_enc, user,
+                                                   fast=FAST_MODE))
     asyncio.ensure_future(connect_reader_to_writer(reader, writer_tg, clt_dec, tg_enc, user))
 
 
