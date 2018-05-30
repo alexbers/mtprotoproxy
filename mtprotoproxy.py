@@ -26,7 +26,7 @@ except ModuleNotFoundError:
         return pyaes.AESModeOfOperationCTR(key, ctr)
 
 
-from config import PORT, PREFER_IPV6, USERS
+from config import PORT, USERS
 
 TG_DATACENTERS_V4 = [
     "149.154.175.50", "149.154.167.51", "149.154.175.100",
@@ -34,17 +34,17 @@ TG_DATACENTERS_V4 = [
 ]
 
 TG_DATACENTERS_V6 = [
-    "2001:0b28:f23d:f001:0000:0000:0000:000a",
-    "2001:067c:04e8:f002:0000:0000:0000:000a",
-    "2001:0b28:f23d:f003:0000:0000:0000:000a",
-    "2001:067c:04e8:f004:0000:0000:0000:000a",
-    "2001:0b28:f23f:f005:0000:0000:0000:000a",
+    "2001:0b28:f23d:f001::a", "2001:067c:04e8:f002::a",
+    "2001:0b28:f23d:f003::a", "2001:067c:04e8:f004::a",
+    "2001:0b28:f23f:f005::a",
 ]
 
 TG_DATACENTER_PORT = 443
 
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = True
+
+PREFER_IPV6 = False
 
 STATS_PRINT_PERIOD = 600
 READ_BUF_SIZE = 4096
@@ -98,12 +98,13 @@ async def handle_handshake(reader, writer):
 
         dc_idx = abs(int.from_bytes(decrypted[60:62], "little", signed=True)) - 1
 
-        if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS_V4) or dc_idx >= len(TG_DATACENTERS_V6):
-            continue
-
         if PREFER_IPV6:
+            if not 0 <= dc_idx < len(TG_DATACENTERS_V6):
+                continue
             dc = TG_DATACENTERS_V6[dc_idx]
         else:
+            if not 0 <= dc_idx < len(TG_DATACENTERS_V4):
+                continue
             dc = TG_DATACENTERS_V4[dc_idx]
 
         return encryptor, decryptor, user, dc, enc_key + enc_iv
@@ -231,16 +232,18 @@ async def stats_printer():
 def print_tg_info():
     try:
         with urllib.request.urlopen('https://ifconfig.co/ip') as f:
-            if f.status != 200: raise Exception("Invalid status code")
+            if f.status != 200:
+                raise Exception("Invalid status code")
             my_ip = f.read().strip()
-    except:
+    except Exception:
         my_ip = 'YOUR_IP'
 
     for user, secret in sorted(USERS.items(), key=lambda x: x[0]):
         params = {
             "server": my_ip, "port": PORT, "secret": secret
         }
-        print("{}: tg://proxy?{}".format(user, urllib.parse.urlencode(params, safe=':')), flush=True)
+        params_encodeded = urllib.parse.urlencode(params, safe=':')
+        print("{}: tg://proxy?{}".format(user, params_encodeded, flush=True))
 
 
 def main():
