@@ -26,7 +26,18 @@ except ModuleNotFoundError:
         return pyaes.AESModeOfOperationCTR(key, ctr)
 
 
-from config import PORT, USERS
+import config
+PORT = getattr(config, "PORT")
+USERS = getattr(config, "USERS")
+
+# load advanced settings
+PREFER_IPV6 = getattr(config, "PREFER_IPV6", False)
+# disables tg->client trafic reencryption, faster but less secure
+FAST_MODE = getattr(config, "FAST_MODE", True)
+STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
+READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 4096)
+
+TG_DATACENTER_PORT = 443
 
 TG_DATACENTERS_V4 = [
     "149.154.175.50", "149.154.167.51", "149.154.175.100",
@@ -38,16 +49,6 @@ TG_DATACENTERS_V6 = [
     "2001:0b28:f23d:f003::a", "2001:067c:04e8:f004::a",
     "2001:0b28:f23f:f005::a",
 ]
-
-TG_DATACENTER_PORT = 443
-
-# disables tg->client trafic reencryption, faster but less secure
-FAST_MODE = True
-
-PREFER_IPV6 = False
-
-STATS_PRINT_PERIOD = 600
-READ_BUF_SIZE = 4096
 
 SKIP_LEN = 8
 PREKEY_LEN = 32
