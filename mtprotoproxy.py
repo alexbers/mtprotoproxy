@@ -17,7 +17,7 @@ try:
         ctr = Counter.new(128, initial_value=iv)
         return AES.new(key, AES.MODE_CTR, counter=ctr)
 
-except ModuleNotFoundError:
+except ImportError:
     print("Failed to find pycrypto, using slow AES version", flush=True)
     import pyaes
 
