@@ -3,6 +3,7 @@
 import asyncio
 import socket
 import urllib.parse
+import urllib.request
 import collections
 import time
 import hashlib
@@ -25,11 +26,19 @@ except ModuleNotFoundError:
         return pyaes.AESModeOfOperationCTR(key, ctr)
 
 
-from config import PORT, USERS
+from config import PORT, PREFER_IPV6, USERS
 
-TG_DATACENTERS = [
+TG_DATACENTERS_V4 = [
     "149.154.175.50", "149.154.167.51", "149.154.175.100",
     "149.154.167.91", "149.154.171.5"
+]
+
+TG_DATACENTERS_V6 = [
+    "2001:0b28:f23d:f001:0000:0000:0000:000a",
+    "2001:067c:04e8:f002:0000:0000:0000:000a",
+    "2001:0b28:f23d:f003:0000:0000:0000:000a",
+    "2001:067c:04e8:f004:0000:0000:0000:000a",
+    "2001:0b28:f23f:f005:0000:0000:0000:000a",
 ]
 
 TG_DATACENTER_PORT = 443
@@ -89,10 +98,13 @@ async def handle_handshake(reader, writer):
 
         dc_idx = abs(int.from_bytes(decrypted[60:62], "little", signed=True)) - 1
 
-        if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS):
+        if dc_idx < 0 or dc_idx >= len(TG_DATACENTERS_V4) or dc_idx >= len(TG_DATACENTERS_V6):
             continue
 
-        dc = TG_DATACENTERS[dc_idx]
+        if PREFER_IPV6:
+            dc = TG_DATACENTERS_V6[dc_idx]
+        else:
+            dc = TG_DATACENTERS_V4[dc_idx]
 
         return encryptor, decryptor, user, dc, enc_key + enc_iv
     return False
@@ -217,23 +229,18 @@ async def stats_printer():
 
 
 def print_tg_info():
-    my_ip = socket.gethostbyname(socket.gethostname())
+    try:
+        with urllib.request.urlopen('https://ifconfig.co/ip') as f:
+            if f.status != 200: raise Exception("Invalid status code")
+            my_ip = f.read().strip()
+    except:
+        my_ip = 'YOUR_IP'
 
-    octets = [int(o) for o in my_ip.split(".")]
-
-    ip_is_local = (len(octets) == 4 and (
-        octets[0] in [127, 10] or
-        octets[0:2] == [192, 168] or
-        (octets[0] == 172 and 16 <= octets[1] <= 31)))
-
-    if ip_is_local:
-        my_ip = "YOUR_IP"
-
-    for user, secret in USERS.items():
+    for user, secret in sorted(USERS.items(), key=lambda x: x[0]):
         params = {
             "server": my_ip, "port": PORT, "secret": secret
         }
-        print("tg://proxy?" + urllib.parse.urlencode(params), flush=True)
+        print("{}: tg://proxy?{}".format(user, urllib.parse.urlencode(params, safe=':')), flush=True)
 
 
 def main():
@@ -242,9 +249,15 @@ def main():
     loop = asyncio.get_event_loop()
     stats_printer_task = asyncio.Task(stats_printer())
     asyncio.ensure_future(stats_printer_task)
-    task = asyncio.start_server(handle_client_wrapper,
-                                "0.0.0.0", PORT, loop=loop)
-    server = loop.run_until_complete(task)
+
+    task_v4 = asyncio.start_server(handle_client_wrapper,
+                                   '0.0.0.0', PORT, loop=loop)
+    server_v4 = loop.run_until_complete(task_v4)
+
+    if socket.has_ipv6:
+        task_v6 = asyncio.start_server(handle_client_wrapper,
+                                       '::', PORT, loop=loop)
+        server_v6 = loop.run_until_complete(task_v6)
 
     try:
         loop.run_forever()
@@ -253,8 +266,13 @@ def main():
 
     stats_printer_task.cancel()
 
-    server.close()
-    loop.run_until_complete(server.wait_closed())
+    server_v4.close()
+    loop.run_until_complete(server_v4.wait_closed())
+
+    if socket.has_ipv6:
+        server_v6.close()
+        loop.run_until_complete(server_v6.wait_closed())
+
     loop.close()
 
 
