@@ -243,7 +243,7 @@ def print_tg_info():
             "server": my_ip, "port": PORT, "secret": secret
         }
         params_encodeded = urllib.parse.urlencode(params, safe=':')
-        print("{}: tg://proxy?{}".format(user, params_encodeded, flush=True))
+        print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
 
 def main():
