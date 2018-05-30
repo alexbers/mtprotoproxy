@@ -234,7 +234,7 @@ def print_tg_info():
         with urllib.request.urlopen('https://ifconfig.co/ip') as f:
             if f.status != 200:
                 raise Exception("Invalid status code")
-            my_ip = f.read().strip()
+            my_ip = f.read().decode().strip()
     except Exception:
         my_ip = 'YOUR_IP'
 
