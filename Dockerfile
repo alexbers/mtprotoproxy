@@ -2,7 +2,7 @@ FROM alpine:3.6
 
 RUN adduser tgproxy -u 10000 -D
 
-RUN apk add --no-cache python3 py3-crypto
+RUN apk add --no-cache python3 py3-crypto ca-certificates
 
 COPY mtprotoproxy.py config.py /home/tgproxy/
 COPY pyaes/*.py /home/tgproxy/pyaes/
