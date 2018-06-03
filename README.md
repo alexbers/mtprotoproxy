@@ -11,6 +11,6 @@ Fast and simple to setup mtproto proxy.
 3. `docker-compose up --build -d` (or just `python3 mtprotoproxy.py` if you don't like docker)
 4. *(optional, shows telegram link to set the proxy)* `docker-compose logs`
 
-## Channel Advertising ""
+## Channel Advertising ##
 
 To advertise a channel get a tag from **@MTProxybot** and write it to *config.py*.
