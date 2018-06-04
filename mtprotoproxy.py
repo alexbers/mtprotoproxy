@@ -100,7 +100,7 @@ PADDING_FILLER = b"\x04\x00\x00\x00"
 MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
-global_my_ip = None
+my_ip_info = {"ipv4": None, "ipv6": None}
 
 
 def init_stats():
@@ -516,8 +516,13 @@ async def do_middleproxy_handshake(dc_idx):
     tg_ip, tg_port = writer_tgt.stream.get_extra_info('peername')
     my_ip, my_port = writer_tgt.stream.get_extra_info('sockname')
 
+    global my_ip_info
+    if my_ip_info["ipv4"]:
+        # prefer global ip settings to work behind NAT
+        my_ip = my_ip_info["ipv4"]
+
     tg_ip_bytes = socket.inet_pton(socket.AF_INET, tg_ip)[::-1]
-    my_ip_bytes = socket.inet_pton(socket.AF_INET, global_my_ip)[::-1]
+    my_ip_bytes = socket.inet_pton(socket.AF_INET, my_ip)[::-1]
 
     tg_port_bytes = int.to_bytes(tg_port, 2, "little")
     my_port_bytes = int.to_bytes(my_port, 2, "little")
@@ -645,28 +650,44 @@ async def stats_printer():
         print(flush=True)
 
 
-def print_tg_info():
+def init_ip_info():
+    TIMEOUT = 5
     global USE_MIDDLE_PROXY
+    global my_ip_info
 
     try:
-        with urllib.request.urlopen('https://ifconfig.co/ip') as f:
+        with urllib.request.urlopen('https://v4.ifconfig.co/ip', timeout=TIMEOUT) as f:
             if f.status != 200:
                 raise Exception("Invalid status code")
-            my_ip = f.read().decode().strip()
-            global global_my_ip
-            global_my_ip = my_ip
+            my_ip_info["ipv4"] = f.read().decode().strip()
     except Exception:
-        my_ip = 'YOUR_IP'
-        if USE_MIDDLE_PROXY:
-            print("Failed to determine your ip, advertising disabled", flush=True)
-            USE_MIDDLE_PROXY = False
+        pass
+
+    try:
+        with urllib.request.urlopen('https://v6.ifconfig.co/ip', timeout=TIMEOUT) as f:
+            if f.status != 200:
+                raise Exception("Invalid status code")
+            my_ip_info["ipv6"] = f.read().decode().strip()
+    except Exception:
+        pass
+
+    if USE_MIDDLE_PROXY and not my_ip_info["ipv4"]: #and not my_ip_info["ipv6"]:
+        print("Failed to determine your ip, advertising disabled", flush=True)
+        USE_MIDDLE_PROXY = False
+
+
+def print_tg_info():
+    global my_ip_info
+
+    ip_addrs = [ip for ip in my_ip_info.values() if ip]
+    if not ip_addrs:
+        ip_addrs = ["YOUR_IP"]
 
     for user, secret in sorted(USERS.items(), key=lambda x: x[0]):
-        params = {
-            "server": my_ip, "port": PORT, "secret": secret
-        }
-        params_encodeded = urllib.parse.urlencode(params, safe=':')
-        print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+        for ip in ip_addrs:
+            params = {"server": ip, "port": PORT, "secret": secret}
+            params_encodeded = urllib.parse.urlencode(params, safe=':')
+            print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
 
 def main():
@@ -703,5 +724,6 @@ def main():
 
 
 if __name__ == "__main__":
+    init_ip_info()
     print_tg_info()
     main()
