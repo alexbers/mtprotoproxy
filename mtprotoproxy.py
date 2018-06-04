@@ -75,6 +75,14 @@ TG_MIDDLE_PROXIES_V4 = [
     ("91.108.4.136", 8888), ("91.108.56.181", 8888)
 ]
 
+TG_MIDDLE_PROXIES_V6 = [
+    ("2001:0b28:f23d:f001:0000:0000:0000:000d", 8888),
+    ("2001:067c:04e8:f002:0000:0000:0000:000d", 80),
+    ("2001:0b28:f23d:f003:0000:0000:0000:000d", 8888),
+    ("2001:067c:04e8:f004:0000:0000:0000:000d", 8888),
+    ("2001:0b28:f23f:f005:0000:0000:0000:000d", 8888)
+]
+
 
 USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
 
@@ -468,9 +476,14 @@ async def do_middleproxy_handshake(dc_idx):
     SENDER_PID = b"IPIPPRPDTIME"
     PEER_PID = b"IPIPPRPDTIME"
 
-    if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V4):
-        return False
-    addr, port = TG_MIDDLE_PROXIES_V4[dc_idx]
+    if PREFER_IPV6:
+        if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V6):
+            return False
+        addr, port = TG_MIDDLE_PROXIES_V6[dc_idx]
+    else:
+        if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V4):
+            return False
+        addr, port = TG_MIDDLE_PROXIES_V4[dc_idx]
 
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(addr, port)
