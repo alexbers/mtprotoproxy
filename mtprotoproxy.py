@@ -494,7 +494,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     use_ipv6_tg = PREFER_IPV6
     use_ipv6_clt = (":" in cl_ip)
 
-    if False and use_ipv6_tg:  # commented out because they aren't work yet
+    if use_ipv6_tg:  # commented out because they aren't work yet
         if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V6):
             return False
         addr, port = TG_MIDDLE_PROXIES_V6[dc_idx]
@@ -558,8 +558,8 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
         tg_ip_bytes = None
         my_ip_bytes = None
 
-        tg_ipv6_bytes = socket.inet_pton(socket.AF_INET6, tg_ip)[::-1]
-        my_ipv6_bytes = socket.inet_pton(socket.AF_INET6, my_ip)[::-1]
+        tg_ipv6_bytes = socket.inet_pton(socket.AF_INET6, tg_ip)
+        my_ipv6_bytes = socket.inet_pton(socket.AF_INET6, my_ip)
 
     tg_port_bytes = int.to_bytes(tg_port, 2, "little")
     my_port_bytes = int.to_bytes(my_port, 2, "little")
