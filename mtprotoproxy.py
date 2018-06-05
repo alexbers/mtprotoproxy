@@ -323,15 +323,27 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream):
+    def __init__(self, upstream, cl_ip, cl_port, my_ip, my_port):
         self.upstream = upstream
+        
+        if ":" not in cl_ip:
+            self.remote_ip_port = b"\x00" * 10 + b"\xff\xff"
+            self.remote_ip_port += socket.inet_pton(socket.AF_INET, cl_ip)
+        else:
+            self.remote_ip_port = socket.inet_pton(socket.AF_INET6, cl_ip)
+        self.remote_ip_port += int.to_bytes(cl_port, 4, "little")
+
+        if ":" not in my_ip:
+            self.our_ip_port = b"\x00" * 10 + b"\xff\xff"
+            self.our_ip_port += socket.inet_pton(socket.AF_INET, my_ip)
+        else:
+            self.our_ip_port = socket.inet_pton(socket.AF_INET6, my_ip)
+        self.our_ip_port += int.to_bytes(my_port, 4, "little")
 
     def write(self, msg):
         RPC_PROXY_REQ = b"\xee\xf1\xce\x36"
         FLAGS = b"\x08\x10\x02\x40"
         OUT_CONN_ID = bytearray([random.randrange(0, 256) for i in range(8)])
-        REMOTE_IP_PORT = b"A" * 20
-        OUR_IP_PORT = b"B" * 20
         EXTRA_SIZE = b"\x18\x00\x00\x00"
         PROXY_TAG = b"\xae\x26\x1e\xdb"
         FOUR_BYTES_ALIGNER = b"\x00\x00\x00"
@@ -341,8 +353,8 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             return 0
 
         full_msg = bytearray()
-        full_msg += RPC_PROXY_REQ + FLAGS + OUT_CONN_ID + REMOTE_IP_PORT
-        full_msg += OUR_IP_PORT + EXTRA_SIZE + PROXY_TAG
+        full_msg += RPC_PROXY_REQ + FLAGS + OUT_CONN_ID + self.remote_ip_port
+        full_msg += self.our_ip_port + EXTRA_SIZE + PROXY_TAG
         full_msg += bytes([len(AD_TAG)]) + AD_TAG + FOUR_BYTES_ALIGNER
         full_msg += msg
 
@@ -442,6 +454,11 @@ async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
 def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_port, purpose,
                                    clt_ip, srv_port, middleproxy_secret, clt_ipv6=None,
                                    srv_ipv6=None):
+    EMPTY_IP = b"\x00\x00\x00\x00"
+
+    if not clt_ip or not srv_ip:
+        clt_ip = EMPTY_IP
+        srv_ip = EMPTY_IP
 
     s = bytearray()
     s += nonce_srv + nonce_clt + clt_ts + srv_ip + clt_port + purpose + clt_ip + srv_port
@@ -460,7 +477,7 @@ def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_por
     return key, iv
 
 
-async def do_middleproxy_handshake(dc_idx):
+async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     START_SEQ_NO = -2
     NONCE_LEN = 16
 
@@ -473,10 +490,11 @@ async def do_middleproxy_handshake(dc_idx):
 
     # pass as consts to simplify code
     RPC_FLAGS = b"\x00\x00\x00\x00"
-    SENDER_PID = b"IPIPPRPDTIME"
-    PEER_PID = b"IPIPPRPDTIME"
 
-    if False and PREFER_IPV6:  # commented out because they aren't work yet
+    use_ipv6_tg = PREFER_IPV6
+    use_ipv6_clt = (":" in cl_ip)
+
+    if False and use_ipv6_tg:  # commented out because they aren't work yet
         if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V6):
             return False
         addr, port = TG_MIDDLE_PROXIES_V6[dc_idx]
@@ -519,33 +537,48 @@ async def do_middleproxy_handshake(dc_idx):
         return False
 
     # get keys
-    tg_ip, tg_port = writer_tgt.upstream.get_extra_info('peername')
-    my_ip, my_port = writer_tgt.upstream.get_extra_info('sockname')
+    tg_ip, tg_port = writer_tgt.upstream.get_extra_info('peername')[:2]
+    my_ip, my_port = writer_tgt.upstream.get_extra_info('sockname')[:2]
 
     global my_ip_info
-    if my_ip_info["ipv4"]:
-        # prefer global ip settings to work behind NAT
-        my_ip = my_ip_info["ipv4"]
+    if not use_ipv6_tg:
+        if my_ip_info["ipv4"]:
+            # prefer global ip settings to work behind NAT
+            my_ip = my_ip_info["ipv4"]
+            
+        tg_ip_bytes = socket.inet_pton(socket.AF_INET, tg_ip)[::-1]
+        my_ip_bytes = socket.inet_pton(socket.AF_INET, my_ip)[::-1]
 
-    tg_ip_bytes = socket.inet_pton(socket.AF_INET, tg_ip)[::-1]
-    my_ip_bytes = socket.inet_pton(socket.AF_INET, my_ip)[::-1]
+        tg_ipv6_bytes = None
+        my_ipv6_bytes = None
+    else:
+        if my_ip_info["ipv6"]:
+            my_ip = my_ip_info["ipv6"]
+
+        tg_ip_bytes = None
+        my_ip_bytes = None
+
+        tg_ipv6_bytes = socket.inet_pton(socket.AF_INET6, tg_ip)[::-1]
+        my_ipv6_bytes = socket.inet_pton(socket.AF_INET6, my_ip)[::-1]
 
     tg_port_bytes = int.to_bytes(tg_port, 2, "little")
     my_port_bytes = int.to_bytes(my_port, 2, "little")
 
-    # TODO: IPv6 support
     enc_key, enc_iv = get_middleproxy_aes_key_and_iv(
         nonce_srv=rpc_nonce, nonce_clt=nonce, clt_ts=crypto_ts, srv_ip=tg_ip_bytes,
-        clt_port=my_port_bytes, purpose=b"CLIENT", clt_ip=my_ip_bytes,
-        srv_port=tg_port_bytes, middleproxy_secret=PROXY_SECRET, clt_ipv6=None, srv_ipv6=None)
+        clt_port=my_port_bytes, purpose=b"CLIENT", clt_ip=my_ip_bytes, srv_port=tg_port_bytes,
+        middleproxy_secret=PROXY_SECRET, clt_ipv6=my_ipv6_bytes, srv_ipv6=tg_ipv6_bytes)
 
     dec_key, dec_iv = get_middleproxy_aes_key_and_iv(
         nonce_srv=rpc_nonce, nonce_clt=nonce, clt_ts=crypto_ts, srv_ip=tg_ip_bytes,
-        clt_port=my_port_bytes, purpose=b"SERVER", clt_ip=my_ip_bytes,
-        srv_port=tg_port_bytes, middleproxy_secret=PROXY_SECRET, clt_ipv6=None, srv_ipv6=None)
+        clt_port=my_port_bytes, purpose=b"SERVER", clt_ip=my_ip_bytes, srv_port=tg_port_bytes,
+        middleproxy_secret=PROXY_SECRET, clt_ipv6=my_ipv6_bytes, srv_ipv6=tg_ipv6_bytes)
 
     encryptor = create_aes_cbc(key=enc_key, iv=enc_iv)
     decryptor = create_aes_cbc(key=dec_key, iv=dec_iv)
+
+    SENDER_PID = b"IPIPPRPDTIME"
+    PEER_PID = b"IPIPPRPDTIME"
 
     # TODO: pass client ip and port here for statistics
     handshake = RPC_HANDSHAKE + RPC_FLAGS + SENDER_PID + PEER_PID
@@ -565,7 +598,7 @@ async def do_middleproxy_handshake(dc_idx):
     if handshake_type != RPC_HANDSHAKE or handshake_peer_pid != SENDER_PID:
         return False
 
-    writer_tgt = ProxyReqStreamWriter(writer_tgt)
+    writer_tgt = ProxyReqStreamWriter(writer_tgt, cl_ip, cl_port, my_ip, my_port)
     reader_tgt = ProxyReqStreamReader(reader_tgt)
 
     return reader_tgt, writer_tgt
@@ -587,7 +620,8 @@ async def handle_client(reader_clt, writer_clt):
         else:
             tg_data = await do_direct_handshake(dc_idx)
     else:
-        tg_data = await do_middleproxy_handshake(dc_idx)
+        cl_ip, cl_port = writer_clt.upstream.get_extra_info('peername')[:2]
+        tg_data = await do_middleproxy_handshake(dc_idx, cl_ip, cl_port)
 
     if not tg_data:
         writer_clt.close()
