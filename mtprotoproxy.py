@@ -476,7 +476,7 @@ async def do_middleproxy_handshake(dc_idx):
     SENDER_PID = b"IPIPPRPDTIME"
     PEER_PID = b"IPIPPRPDTIME"
 
-    if PREFER_IPV6:
+    if False and PREFER_IPV6:  # commented out because they aren't work yet
         if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V6):
             return False
         addr, port = TG_MIDDLE_PROXIES_V6[dc_idx]
