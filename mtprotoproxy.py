@@ -9,6 +9,7 @@ import time
 import hashlib
 import random
 import binascii
+import sys
 
 try:
     from Crypto.Cipher import AES
@@ -732,6 +733,10 @@ def print_tg_info():
 
 def main():
     init_stats()
+
+    if sys.platform == 'win32':
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
 
     loop = asyncio.get_event_loop()
     stats_printer_task = asyncio.Task(stats_printer())
