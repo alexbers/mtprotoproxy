@@ -5,3 +5,4 @@ services:
     restart: unless-stopped
     mem_limit: 1024m
     network_mode: "host"
+    tty: true
