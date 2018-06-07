@@ -351,11 +351,11 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         else:
             self.our_ip_port = socket.inet_pton(socket.AF_INET6, my_ip)
         self.our_ip_port += int.to_bytes(my_port, 4, "little")
+        self.out_conn_id = bytearray([random.randrange(0, 256) for i in range(8)])
 
     def write(self, msg):
         RPC_PROXY_REQ = b"\xee\xf1\xce\x36"
         FLAGS = b"\x08\x10\x02\x40"
-        OUT_CONN_ID = bytearray([random.randrange(0, 256) for i in range(8)])
         EXTRA_SIZE = b"\x18\x00\x00\x00"
         PROXY_TAG = b"\xae\x26\x1e\xdb"
         FOUR_BYTES_ALIGNER = b"\x00\x00\x00"
@@ -365,7 +365,7 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             return 0
 
         full_msg = bytearray()
-        full_msg += RPC_PROXY_REQ + FLAGS + OUT_CONN_ID + self.remote_ip_port
+        full_msg += RPC_PROXY_REQ + FLAGS + self.out_conn_id + self.remote_ip_port
         full_msg += self.our_ip_port + EXTRA_SIZE + PROXY_TAG
         full_msg += bytes([len(AD_TAG)]) + AD_TAG + FOUR_BYTES_ALIGNER
         full_msg += msg
@@ -491,6 +491,16 @@ def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_por
     return key, iv
 
 
+def set_keepalive(sock, interval=40, attempts=5):
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    if hasattr(socket, "TCP_KEEPIDLE"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, interval)
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval)
+    if hasattr(socket, "TCP_KEEPCNT"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, attempts)
+
+
 async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     START_SEQ_NO = -2
     NONCE_LEN = 16
@@ -519,6 +529,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
 
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(addr, port)
+        set_keepalive(writer_tgt.get_extra_info("socket"))
     except ConnectionRefusedError as E:
         print_err("Got connection refused while trying to connect to", addr, port)
         return False
