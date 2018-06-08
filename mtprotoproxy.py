@@ -150,6 +150,9 @@ class LayeredStreamWriterBase:
     def write(self, data):
         return self.upstream.write(data)
 
+    def write_eof(self):
+        return self.upstream.write_eof()
+
     async def drain(self):
         return await self.upstream.drain()
 
