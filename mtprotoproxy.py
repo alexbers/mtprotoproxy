@@ -23,7 +23,8 @@ try:
         return AES.new(key, AES.MODE_CBC, iv)
 
 except ImportError:
-    print("Failed to find pycrypto, using slow AES version", flush=True, file=sys.stderr)
+    print("Failed to find pycryptodome or pycrypto, using slow AES implementation",
+          flush=True, file=sys.stderr)
     import pyaes
 
     def create_aes_ctr(key, iv):
