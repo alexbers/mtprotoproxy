@@ -4,7 +4,7 @@ RUN adduser tgproxy -u 10000 -D
 
 RUN apk add --no-cache python3 py3-crypto ca-certificates
 
-COPY mtprotoproxy.py config.py /home/tgproxy/
+COPY mtprotoproxy.py config.py crypto_aes.py /home/tgproxy/
 COPY pyaes/*.py /home/tgproxy/pyaes/
 
 RUN chown -R tgproxy:tgproxy /home/tgproxy
