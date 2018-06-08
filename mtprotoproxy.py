@@ -11,40 +11,9 @@ import random
 import binascii
 import sys
 
-try:
-    from Crypto.Cipher import AES
-    from Crypto.Util import Counter
+from crypto_aes import create_aes_ctr, create_aes_cbc
 
-    def create_aes_ctr(key, iv):
-        ctr = Counter.new(128, initial_value=int.from_bytes(iv, "big"))
-        return AES.new(key, AES.MODE_CTR, counter=ctr)
 
-    def create_aes_cbc(key, iv):
-        return AES.new(key, AES.MODE_CBC, iv)
-
-except ImportError:
-    print("Failed to find pycrypto, using slow AES version", flush=True, file=sys.stderr)
-    import pyaes
-
-    def create_aes_ctr(key, iv):
-        ctr = pyaes.Counter(int.from_bytes(iv, "big"))
-        return pyaes.AESModeOfOperationCTR(key, ctr)
-
-    def create_aes_cbc(key, iv):
-        class EncryptorAdapter:
-            def __init__(self, mode):
-                self.mode = mode
-
-            def encrypt(self, data):
-                encrypter = pyaes.Encrypter(self.mode, pyaes.PADDING_NONE)
-                return encrypter.feed(data) + encrypter.feed()
-
-            def decrypt(self, data):
-                decrypter = pyaes.Decrypter(self.mode, pyaes.PADDING_NONE)
-                return decrypter.feed(data) + decrypter.feed()
-
-        mode = pyaes.AESModeOfOperationCBC(key, iv)
-        return EncryptorAdapter(mode)
 
 
 import config
