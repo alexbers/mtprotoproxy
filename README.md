@@ -2,7 +2,7 @@
 
 Fast and simple to setup mtproto proxy.
 
-**This is pre-alpha. Don't recommended for production use yet**
+**This is a beta version. Don't recommended for production use yet**
 
 ## Starting Up ##
     
