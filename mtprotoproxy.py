@@ -53,7 +53,7 @@ PORT = getattr(config, "PORT")
 USERS = getattr(config, "USERS")
 
 # load advanced settings
-PREFER_IPV6 = getattr(config, "PREFER_IPV6", False)
+PREFER_IPV6 = getattr(config, "PREFER_IPV6", socket.has_ipv6)
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = getattr(config, "FAST_MODE", True)
 STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
@@ -427,10 +427,10 @@ async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(dc, TG_DATACENTER_PORT)
     except ConnectionRefusedError as E:
-        print_err("Got connection refused while trying to connect to", addr, port)
+        print_err("Got connection refused while trying to connect to", dc, TG_DATACENTER_PORT)
         return False
     except OSError as E:
-        print_err("Unable to connect to", addr, port)
+        print_err("Unable to connect to", dc, TG_DATACENTER_PORT)
         return False
 
     while True:
@@ -522,7 +522,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     use_ipv6_tg = PREFER_IPV6
     use_ipv6_clt = (":" in cl_ip)
 
-    if use_ipv6_tg:  # commented out because they aren't work yet
+    if use_ipv6_tg:
         if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V6):
             return False
         addr, port = TG_MIDDLE_PROXIES_V6[dc_idx]
@@ -722,9 +722,10 @@ async def stats_printer():
 
 
 def init_ip_info():
-    TIMEOUT = 5
     global USE_MIDDLE_PROXY
+    global PREFER_IPV6
     global my_ip_info
+    TIMEOUT = 5
 
     try:
         with urllib.request.urlopen('https://v4.ifconfig.co/ip', timeout=TIMEOUT) as f:
@@ -734,17 +735,22 @@ def init_ip_info():
     except Exception:
         pass
 
-    try:
-        with urllib.request.urlopen('https://v6.ifconfig.co/ip', timeout=TIMEOUT) as f:
-            if f.status != 200:
-                raise Exception("Invalid status code")
-            my_ip_info["ipv6"] = f.read().decode().strip()
-    except Exception:
-        pass
+    if PREFER_IPV6:
+        try:
+            with urllib.request.urlopen('https://v6.ifconfig.co/ip', timeout=TIMEOUT) as f:
+                if f.status != 200:
+                    raise Exception("Invalid status code")
+                my_ip_info["ipv6"] = f.read().decode().strip()
+        except Exception:
+            PREFER_IPV6 = False
+        else:
+            print_err("IPv6 found, using it for external communication")
 
-    if USE_MIDDLE_PROXY and not my_ip_info["ipv4"]:  # and not my_ip_info["ipv6"]:
-        print_err("Failed to determine your ip, advertising disabled")
-        USE_MIDDLE_PROXY = False
+    if USE_MIDDLE_PROXY:
+        if ((not PREFER_IPV6 and not my_ip_info["ipv4"]) or
+                (PREFER_IPV6 and not my_ip_info["ipv6"])):
+            print_err("Failed to determine your ip, advertising disabled")
+            USE_MIDDLE_PROXY = False
 
 
 def print_tg_info():
