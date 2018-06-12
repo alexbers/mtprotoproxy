@@ -444,7 +444,8 @@ async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
         dc = TG_DATACENTERS_V4[dc_idx]
 
     try:
-        reader_tgt, writer_tgt = await asyncio.open_connection(dc, TG_DATACENTER_PORT)
+        reader_tgt, writer_tgt = await asyncio.open_connection(dc, TG_DATACENTER_PORT,
+                                                               limit=READ_BUF_SIZE)
     except ConnectionRefusedError as E:
         print_err("Got connection refused while trying to connect to", dc, TG_DATACENTER_PORT)
         return False
@@ -556,7 +557,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
         addr, port = random.choice(TG_MIDDLE_PROXIES_V4[dc_idx])
 
     try:
-        reader_tgt, writer_tgt = await asyncio.open_connection(addr, port)
+        reader_tgt, writer_tgt = await asyncio.open_connection(addr, port, limit=READ_BUF_SIZE)
         set_keepalive(writer_tgt.get_extra_info("socket"))
         set_bufsizes(writer_tgt.get_extra_info("socket"))
     except ConnectionRefusedError as E:
@@ -910,12 +911,12 @@ def main():
         asyncio.ensure_future(middle_proxy_updater_task)
 
     task_v4 = asyncio.start_server(handle_client_wrapper,
-                                   '0.0.0.0', PORT, loop=loop)
+                                   '0.0.0.0', PORT, limit=READ_BUF_SIZE, loop=loop)
     server_v4 = loop.run_until_complete(task_v4)
 
     if socket.has_ipv6:
         task_v6 = asyncio.start_server(handle_client_wrapper,
-                                       '::', PORT, loop=loop)
+                                       '::', PORT, limit=READ_BUF_SIZE, loop=loop)
         server_v6 = loop.run_until_complete(task_v6)
 
     try:
