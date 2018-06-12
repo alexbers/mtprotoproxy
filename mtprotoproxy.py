@@ -10,6 +10,7 @@ import hashlib
 import random
 import binascii
 import sys
+import re
 
 
 try:
@@ -68,6 +69,7 @@ PREFER_IPV6 = getattr(config, "PREFER_IPV6", socket.has_ipv6)
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = getattr(config, "FAST_MODE", True)
 STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
+PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60*60*24)
 READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 4096)
 AD_TAG = bytes.fromhex(getattr(config, "AD_TAG", ""))
 
@@ -83,18 +85,22 @@ TG_DATACENTERS_V6 = [
     "2001:67c:04e8:f004::a", "2001:b28:f23f:f005::a"
 ]
 
-TG_MIDDLE_PROXIES_V4 = [
-    ("149.154.175.50", 8888), ("149.154.162.38", 80), ("149.154.175.100", 8888),
-    ("91.108.4.136", 8888), ("91.108.56.181", 8888)
-]
+# This list will be updated in the runtime
+TG_MIDDLE_PROXIES_V4 = {
+    1: [("149.154.175.50", 8888)], -1: [("149.154.175.50", 8888)],
+    2: [("149.154.162.38", 80)], -2: [("149.154.162.38", 80)],
+    3: [("149.154.175.100", 8888)], -3: [("149.154.175.100", 8888)],
+    4: [("91.108.4.136", 8888)], -4: [("91.108.4.136", 8888)],
+    5: [("91.108.56.181", 8888)], -5: [("91.108.56.181", 8888)]
+}
 
-TG_MIDDLE_PROXIES_V6 = [
-    ("2001:0b28:f23d:f001:0000:0000:0000:000d", 8888),
-    ("2001:067c:04e8:f002:0000:0000:0000:000d", 80),
-    ("2001:0b28:f23d:f003:0000:0000:0000:000d", 8888),
-    ("2001:067c:04e8:f004:0000:0000:0000:000d", 8888),
-    ("2001:0b28:f23f:f005:0000:0000:0000:000d", 8888)
-]
+TG_MIDDLE_PROXIES_V6 = {
+    1: [("2001:b28:f23d:f001::d", 8888)], -1: [("2001:b28:f23d:f001::d", 8888)],
+    2: [("2001:67c:04e8:f002::d", 80)], -2: [("2001:67c:04e8:f002::d", 80)],
+    3: [("2001:b28:f23d:f003::d", 8888)], -3: [("2001:b28:f23d:f003::d", 8888)],
+    4: [("2001:67c:04e8:f004::d", 8888)], -4: [("2001:67c:04e8:f004::d", 8888)],
+    5: [("2001:b28:f23f:f005::d", 8888)], -5: [("2001:67c:04e8:f004::d", 8888)]
+}
 
 
 USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
@@ -112,6 +118,7 @@ KEY_LEN = 32
 IV_LEN = 16
 HANDSHAKE_LEN = 64
 MAGIC_VAL_POS = 56
+DC_IDX_POS = 60
 
 MAGIC_VAL_TO_CHECK = b'\xef\xef\xef\xef'
 
@@ -410,9 +417,7 @@ async def handle_handshake(reader, writer):
         if check_val != MAGIC_VAL_TO_CHECK:
             continue
 
-        dc_idx = abs(int.from_bytes(decrypted[60:62], "little", signed=True)) - 1
-        if dc_idx == 0:
-            continue
+        dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
@@ -425,6 +430,8 @@ async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
     RESERVED_NONCE_BEGININGS = [b"\x48\x45\x41\x44", b"\x50\x4F\x53\x54",
                                 b"\x47\x45\x54\x20", b"\xee\xee\xee\xee"]
     RESERVED_NONCE_CONTINUES = [b"\x00\x00\x00\x00"]
+
+    dc_idx = abs(dc_idx) - 1
 
     if PREFER_IPV6:
         if not 0 <= dc_idx < len(TG_DATACENTERS_V6):
@@ -534,13 +541,13 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     use_ipv6_clt = (":" in cl_ip)
 
     if use_ipv6_tg:
-        if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V6):
+        if dc_idx not in TG_MIDDLE_PROXIES_V6:
             return False
-        addr, port = TG_MIDDLE_PROXIES_V6[dc_idx]
+        addr, port = random.choice(TG_MIDDLE_PROXIES_V6[dc_idx])
     else:
-        if not 0 <= dc_idx < len(TG_MIDDLE_PROXIES_V4):
+        if dc_idx not in TG_MIDDLE_PROXIES_V4:
             return False
-        addr, port = TG_MIDDLE_PROXIES_V4[dc_idx]
+        addr, port = random.choice(TG_MIDDLE_PROXIES_V4[dc_idx])
 
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(addr, port)
@@ -732,6 +739,85 @@ async def stats_printer():
         print(flush=True)
 
 
+async def update_middle_proxy_info():
+    async def make_https_req(url):
+        # returns resp body
+        SSL_PORT = 443
+        url_data = urllib.parse.urlparse(url)
+
+        HTTP_REQ_TEMPLATE = "\r\n".join(["GET %s HTTP/1.1", "Host: core.telegram.org",
+                                         "Connection: close"]) + "\r\n\r\n"
+        try:
+            reader, writer = await asyncio.open_connection(url_data.netloc, SSL_PORT, ssl=True)
+            req = HTTP_REQ_TEMPLATE % urllib.parse.quote(url_data.path)
+            writer.write(req.encode("utf8"))
+            data = await reader.read()
+            writer.close()
+
+            headers, body = data.split(b"\r\n\r\n", 1)
+            return body
+        except Exception:
+            return b""
+
+    async def get_new_proxies(url):
+        PROXY_REGEXP = re.compile(r"proxy_for\s+(-?\d+)\s+(.+):(\d+)\s*;")
+
+        ans = {}
+        try:
+            body = await make_https_req(url)
+        except Exception:
+            return ans
+
+        fields = PROXY_REGEXP.findall(body.decode("utf8"))
+        if fields:
+            for dc_idx, host, port in fields:
+                if host.startswith("[") and host.endswith("]"):
+                    host = host[1:-1]
+                dc_idx, port = int(dc_idx), int(port)
+                if dc_idx not in ans:
+                    ans[dc_idx] = [(host, port)]
+                else:
+                    ans[dc_idx].append((host, port))
+        return ans
+
+    PROXY_INFO_ADDR = "https://core.telegram.org/getProxyConfig"
+    PROXY_INFO_ADDR_V6 = "https://core.telegram.org/getProxyConfigV6"
+    PROXY_SECRET_ADDR = "https://core.telegram.org/getProxySecret"
+
+    global TG_MIDDLE_PROXIES_V4
+    global TG_MIDDLE_PROXIES_V6
+    global PROXY_SECRET
+
+    while True:
+        try:
+            v4_proxies = await get_new_proxies(PROXY_INFO_ADDR)
+            if not v4_proxies:
+                raise Exception("no proxy data")
+            TG_MIDDLE_PROXIES_V4 = v4_proxies
+        except Exception:
+            print_err("Error updating middle proxy list")
+
+        try:
+            v6_proxies = await get_new_proxies(PROXY_INFO_ADDR_V6)
+            if not v6_proxies:
+                raise Exception("no proxy data (ipv6)")
+            TG_MIDDLE_PROXIES_V6 = v6_proxies
+        except Exception:
+            print_err("Error updating middle proxy list for IPv6")
+
+        try:
+            secret = await make_https_req(PROXY_SECRET_ADDR)
+            if not secret:
+                raise Exception("no secret")
+            if secret != PROXY_SECRET:
+                PROXY_SECRET = secret
+                print_err("Middle proxy secret updated")
+        except Exception:
+            print_err("Error updating middle proxy secret, using old")
+
+        await asyncio.sleep(PROXY_INFO_UPDATE_PERIOD)
+
+
 def init_ip_info():
     global USE_MIDDLE_PROXY
     global PREFER_IPV6
@@ -809,6 +895,10 @@ def main():
 
     stats_printer_task = asyncio.Task(stats_printer())
     asyncio.ensure_future(stats_printer_task)
+
+    if USE_MIDDLE_PROXY:
+        middle_proxy_updater_task = asyncio.Task(update_middle_proxy_info())
+        asyncio.ensure_future(middle_proxy_updater_task)
 
     task_v4 = asyncio.start_server(handle_client_wrapper,
                                    '0.0.0.0', PORT, loop=loop)
