@@ -70,7 +70,8 @@ PREFER_IPV6 = getattr(config, "PREFER_IPV6", socket.has_ipv6)
 FAST_MODE = getattr(config, "FAST_MODE", True)
 STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
 PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60*60*24)
-READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 4096)
+READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 16384)
+WRITE_BUF_SIZE = getattr(config, "WRITE_BUF_SIZE", 131072)
 AD_TAG = bytes.fromhex(getattr(config, "AD_TAG", ""))
 
 TG_DATACENTER_PORT = 443
@@ -523,6 +524,11 @@ def set_keepalive(sock, interval=40, attempts=5):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, attempts)
 
 
+def set_bufsizes(sock, recv_buf=READ_BUF_SIZE, send_buf=WRITE_BUF_SIZE):
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, recv_buf)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
+
+
 async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     START_SEQ_NO = -2
     NONCE_LEN = 16
@@ -552,6 +558,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(addr, port)
         set_keepalive(writer_tgt.get_extra_info("socket"))
+        set_bufsizes(writer_tgt.get_extra_info("socket"))
     except ConnectionRefusedError as E:
         print_err("Got connection refused while trying to connect to", addr, port)
         return False
@@ -654,6 +661,8 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
 
 
 async def handle_client(reader_clt, writer_clt):
+    set_bufsizes(writer_clt.get_extra_info("socket"))
+
     clt_data = await handle_handshake(reader_clt, writer_clt)
     if not clt_data:
         writer_clt.transport.abort()
