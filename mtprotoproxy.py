@@ -72,6 +72,7 @@ STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
 PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60*60*24)
 READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 16384)
 WRITE_BUF_SIZE = getattr(config, "WRITE_BUF_SIZE", 65536)
+CLIENT_KEEPALIVE = getattr(config, "CLIENT_KEEPALIVE", 60*30)
 AD_TAG = bytes.fromhex(getattr(config, "AD_TAG", ""))
 
 TG_DATACENTER_PORT = 443
@@ -662,6 +663,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
 
 
 async def handle_client(reader_clt, writer_clt):
+    set_keepalive(writer_clt.get_extra_info("socket"), CLIENT_KEEPALIVE)
     set_bufsizes(writer_clt.get_extra_info("socket"))
 
     clt_data = await handle_handshake(reader_clt, writer_clt)
