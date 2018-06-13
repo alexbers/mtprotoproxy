@@ -71,7 +71,7 @@ FAST_MODE = getattr(config, "FAST_MODE", True)
 STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
 PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60*60*24)
 READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 16384)
-WRITE_BUF_SIZE = getattr(config, "WRITE_BUF_SIZE", 131072)
+WRITE_BUF_SIZE = getattr(config, "WRITE_BUF_SIZE", 65536)
 AD_TAG = bytes.fromhex(getattr(config, "AD_TAG", ""))
 
 TG_DATACENTER_PORT = 443
