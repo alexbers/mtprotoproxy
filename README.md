@@ -2,8 +2,6 @@
 
 Fast and simple to setup mtproto proxy.
 
-**This is a beta version. Don't recommended for production use yet**
-
 ## Starting Up ##
     
 1. `git clone https://github.com/alexbers/mtprotoproxy.git; cd mtprotoproxy`
@@ -14,3 +12,8 @@ Fast and simple to setup mtproto proxy.
 ## Channel Advertising ##
 
 To advertise a channel get a tag from **@MTProxybot** and write it to *config.py*.
+
+## Performance ##
+
+The proxy performance should be enough to comfortably serve about 4 000 simultaneous users on
+the smallest VDS instance with 1 CPU core and 1024MB RAM.
