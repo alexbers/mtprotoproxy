@@ -322,7 +322,7 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
         LARGE_PKT_BORGER = 256 ** 3
 
         if len(data) % 4 != 0:
-            print_err("BUG: MTProtoFrameStreamWriter attempted to send msg with len %d" % len(msg))
+            print_err("BUG: MTProtoFrameStreamWriter attempted to send msg with len %d" % len(data))
             return 0
 
         len_div_four = len(data) // 4
