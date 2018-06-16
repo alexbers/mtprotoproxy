@@ -377,9 +377,11 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         self.our_ip_port += int.to_bytes(my_port, 4, "little")
         self.out_conn_id = bytearray([random.randrange(0, 256) for i in range(8)])
 
+        self.first_flag_byte = b"\x0a"
+
     def write(self, msg):
         RPC_PROXY_REQ = b"\xee\xf1\xce\x36"
-        FLAGS = b"\x08\x10\x02\x40"
+        FLAGS = b"\x10\x02\x40"
         EXTRA_SIZE = b"\x18\x00\x00\x00"
         PROXY_TAG = b"\xae\x26\x1e\xdb"
         FOUR_BYTES_ALIGNER = b"\x00\x00\x00"
@@ -389,11 +391,12 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             return 0
 
         full_msg = bytearray()
-        full_msg += RPC_PROXY_REQ + FLAGS + self.out_conn_id + self.remote_ip_port
-        full_msg += self.our_ip_port + EXTRA_SIZE + PROXY_TAG
+        full_msg += RPC_PROXY_REQ + self.first_flag_byte + FLAGS + self.out_conn_id
+        full_msg += self.remote_ip_port + self.our_ip_port + EXTRA_SIZE + PROXY_TAG
         full_msg += bytes([len(AD_TAG)]) + AD_TAG + FOUR_BYTES_ALIGNER
         full_msg += msg
 
+        self.first_flag_byte = b"\x08"
         return self.upstream.write(full_msg)
 
 
