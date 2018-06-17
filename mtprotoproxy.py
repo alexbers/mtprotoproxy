@@ -415,10 +415,11 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, peer, cl_ip, cl_port, my_ip, my_port):
+    def __init__(self, upstream, peer, my_ip, my_port):
         self.upstream = upstream
         self.peer = peer
 
+        cl_ip, cl_port = peer[:2]
         if ":" not in cl_ip:
             self.remote_ip_port = b"\x00" * 10 + b"\xff\xff"
             self.remote_ip_port += socket.inet_pton(socket.AF_INET, cl_ip)
@@ -596,7 +597,7 @@ def set_bufsizes(sock, recv_buf=READ_BUF_SIZE, send_buf=WRITE_BUF_SIZE):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
 
 
-async def do_middleproxy_handshake(peer, dc_idx, cl_ip, cl_port):
+async def do_middleproxy_handshake(peer, dc_idx):
     START_SEQ_NO = -2
     NONCE_LEN = 16
 
@@ -609,6 +610,8 @@ async def do_middleproxy_handshake(peer, dc_idx, cl_ip, cl_port):
 
     # pass as consts to simplify code
     RPC_FLAGS = b"\x00\x00\x00\x00"
+
+    cl_ip, cl_port = peer[:2]
 
     use_ipv6_tg = PREFER_IPV6
     use_ipv6_clt = (":" in cl_ip)
@@ -721,7 +724,7 @@ async def do_middleproxy_handshake(peer, dc_idx, cl_ip, cl_port):
     if handshake_type != RPC_HANDSHAKE or handshake_peer_pid != SENDER_PID:
         return False
 
-    writer_tgt = ProxyReqStreamWriter(writer_tgt, peer, cl_ip, cl_port, my_ip, my_port)
+    writer_tgt = ProxyReqStreamWriter(writer_tgt, peer, my_ip, my_port)
     reader_tgt = ProxyReqStreamReader(reader_tgt)
 
     return reader_tgt, writer_tgt
@@ -749,8 +752,7 @@ async def handle_client(reader_clt, writer_clt):
         else:
             tg_data = await do_direct_handshake(proto_tag, dc_idx)
     else:
-        cl_ip, cl_port = peer[:2]
-        tg_data = await do_middleproxy_handshake(peer, dc_idx, cl_ip, cl_port)
+        tg_data = await do_middleproxy_handshake(peer, dc_idx)
 
     if not tg_data:
         writer_clt.transport.abort()
