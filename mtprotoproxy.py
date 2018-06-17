@@ -119,10 +119,11 @@ PREKEY_LEN = 32
 KEY_LEN = 32
 IV_LEN = 16
 HANDSHAKE_LEN = 64
-MAGIC_VAL_POS = 56
+PROTO_TAG_POS = 56
 DC_IDX_POS = 60
 
-MAGIC_VAL_TO_CHECK = b'\xef\xef\xef\xef'
+PROTO_TAG_ABRIDGED = b"\xef\xef\xef\xef"
+PROTO_TAG_INTERMEDIATE = b"\xee\xee\xee\xee"
 
 CBC_PADDING = 16
 PADDING_FILLER = b"\x04\x00\x00\x00"
@@ -420,19 +421,19 @@ async def handle_handshake(reader, writer):
 
         decrypted = decryptor.decrypt(handshake)
 
-        check_val = decrypted[MAGIC_VAL_POS:MAGIC_VAL_POS+4]
-        if check_val != MAGIC_VAL_TO_CHECK:
+        proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS+4]
+        if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE):
             continue
 
         dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
-        return reader, writer, user, dc_idx, enc_key + enc_iv
+        return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv
     return False
 
 
-async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
+async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
     RESERVED_NONCE_FIRST_CHARS = [b"\xef"]
     RESERVED_NONCE_BEGININGS = [b"\x48\x45\x41\x44", b"\x50\x4F\x53\x54",
                                 b"\x47\x45\x54\x20", b"\xee\xee\xee\xee"]
@@ -469,7 +470,7 @@ async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
             continue
         break
 
-    rnd[MAGIC_VAL_POS:MAGIC_VAL_POS+4] = MAGIC_VAL_TO_CHECK
+    rnd[PROTO_TAG_POS:PROTO_TAG_POS+4] = proto_tag
 
     if dec_key_and_iv:
         rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN] = dec_key_and_iv[::-1]
@@ -484,7 +485,7 @@ async def do_direct_handshake(dc_idx, dec_key_and_iv=None):
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
     encryptor = create_aes_ctr(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
-    rnd_enc = rnd[:MAGIC_VAL_POS] + encryptor.encrypt(rnd)[MAGIC_VAL_POS:]
+    rnd_enc = rnd[:PROTO_TAG_POS] + encryptor.encrypt(rnd)[PROTO_TAG_POS:]
 
     writer_tgt.write(rnd_enc)
     await writer_tgt.drain()
@@ -676,15 +677,15 @@ async def handle_client(reader_clt, writer_clt):
         writer_clt.transport.abort()
         return
 
-    reader_clt, writer_clt, user, dc_idx, enc_key_and_iv = clt_data
+    reader_clt, writer_clt, proto_tag, user, dc_idx, enc_key_and_iv = clt_data
 
     update_stats(user, connects=1)
 
     if not USE_MIDDLE_PROXY:
         if FAST_MODE:
-            tg_data = await do_direct_handshake(dc_idx, dec_key_and_iv=enc_key_and_iv)
+            tg_data = await do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=enc_key_and_iv)
         else:
-            tg_data = await do_direct_handshake(dc_idx)
+            tg_data = await do_direct_handshake(proto_tag, dc_idx)
     else:
         cl_ip, cl_port = writer_clt.upstream.get_extra_info('peername')[:2]
         tg_data = await do_middleproxy_handshake(dc_idx, cl_ip, cl_port)
