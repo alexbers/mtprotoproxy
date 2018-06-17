@@ -340,10 +340,6 @@ class MTProtoCompactFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, seq_no=0):
-        self.upstream = upstream
-        self.seq_no = seq_no
-
     def write(self, data):
         SMALL_PKT_BORDER = 0x7f
         LARGE_PKT_BORGER = 256 ** 3
@@ -372,7 +368,6 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
     async def read(self, buf_size):
         msg_len_bytes = await self.upstream.readexactly(4)
 
-        print(f'raw msg length: {binascii.hexlify(msg_len_bytes)}')
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
         if msg_len & RpcFlags.QUICKACK.value:
@@ -385,18 +380,12 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
             (FLAGHACKS[self.peer] & ~RpcFlags.QUICKACK) | quickack
         )
 
-        print(f'parsing medium packet, len: {msg_len}');
-
         data = await self.upstream.readexactly(msg_len)
 
         return data
 
 
 class MTProtoIntermediateFrameStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, seq_no=0):
-        self.upstream = upstream
-        self.seq_no = seq_no
-
     def write(self, data):
         return self.upstream.write(
             int.to_bytes(len(data), 4, 'little') +
@@ -410,8 +399,6 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
         RPC_CLOSE_EXT = b"\xa2\x34\xb6\x5e"
 
         data = await self.upstream.read(1)
-
-        print(f"middle proxy response size: {len(data)}")
 
         if len(data) < 4:
             return b""
@@ -462,8 +449,6 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         header = msg[:7]
         if header == b'\x00' * 7:
             flags |= RpcFlags.NOT_ENCRYPTED
-
-        print(f'flags: {flags} == {hex(flags.value)}')
 
         flags = flags.value.to_bytes(4, 'little')
 
