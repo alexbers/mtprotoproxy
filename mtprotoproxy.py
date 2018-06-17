@@ -145,7 +145,7 @@ MAX_MSG_LEN = 2 ** 24
 my_ip_info = {"ipv4": None, "ipv6": None}
 
 
-FLAGHACKS = {}
+QUICK_ACK_EXPECTED = {}
 
 
 def print_err(*params):
@@ -318,14 +318,11 @@ class MTProtoCompactFrameStreamReader(LayeredStreamReaderBase):
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
         if msg_len >= 0x80:
-            quickack = RpcFlags.QUICKACK
+            QUICK_ACK_EXPECTED[self.peer] = True
             msg_len -= 0x80
         else:
-            quickack = RpcFlags.NONE
+            QUICK_ACK_EXPECTED[self.peer] = False
 
-        FLAGHACKS[self.peer] = (
-            (FLAGHACKS[self.peer] & ~RpcFlags.QUICKACK) | quickack
-        )
 
         if msg_len == 0x7f:
             msg_len_bytes = await self.upstream.readexactly(3)
@@ -371,13 +368,9 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
 
         if msg_len & RpcFlags.QUICKACK.value:
             msg_len &= ~RpcFlags.QUICKACK.value
-            quickack = RpcFlags.QUICKACK
+            QUICK_ACK_EXPECTED[self.peer] = True
         else:
-            quickack = RpcFlags.NONE
-
-        FLAGHACKS[self.peer] = (
-            (FLAGHACKS[self.peer] & ~RpcFlags.QUICKACK) | quickack
-        )
+            QUICK_ACK_EXPECTED[self.peer] = False
 
         data = await self.upstream.readexactly(msg_len)
 
@@ -414,9 +407,10 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, peer, my_ip, my_port):
+    def __init__(self, upstream, peer, rpc_flags, my_ip, my_port):
         self.upstream = upstream
         self.peer = peer
+        self.rpc_flags = rpc_flags
 
         cl_ip, cl_port = peer[:2]
         if ":" not in cl_ip:
@@ -444,10 +438,12 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             print_err("BUG: attempted to send msg with len %d" % len(msg))
             return 0
 
-        flags = FLAGHACKS[self.peer] | RpcFlags.MAGIC | RpcFlags.HAS_AD_TAG
+        flags = self.rpc_flags | RpcFlags.MAGIC | RpcFlags.HAS_AD_TAG
 
-        header = msg[:7]
-        if header == b'\x00' * 7:
+        if QUICK_ACK_EXPECTED[self.peer]:
+            flags |= RpcFlags.QUICKACK
+
+        if msg[:7] == b'\x00' * 7:
             flags |= RpcFlags.NOT_ENCRYPTED
 
         flags = flags.value.to_bytes(4, 'little')
@@ -596,7 +592,7 @@ def set_bufsizes(sock, recv_buf=READ_BUF_SIZE, send_buf=WRITE_BUF_SIZE):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
 
 
-async def do_middleproxy_handshake(peer, dc_idx):
+async def do_middleproxy_handshake(peer, rpc_flags, dc_idx):
     START_SEQ_NO = -2
     NONCE_LEN = 16
 
@@ -723,7 +719,7 @@ async def do_middleproxy_handshake(peer, dc_idx):
     if handshake_type != RPC_HANDSHAKE or handshake_peer_pid != SENDER_PID:
         return False
 
-    writer_tgt = ProxyReqStreamWriter(writer_tgt, peer, my_ip, my_port)
+    writer_tgt = ProxyReqStreamWriter(writer_tgt, peer, rpc_flags, my_ip, my_port)
     reader_tgt = ProxyReqStreamReader(reader_tgt)
 
     return reader_tgt, writer_tgt
@@ -734,8 +730,7 @@ async def handle_client(reader_clt, writer_clt):
     set_bufsizes(writer_clt.get_extra_info("socket"))
 
     peer = writer_clt.get_extra_info('peername')
-    FLAGHACKS[peer] = RpcFlags.EXTMODE2 
-
+    
     clt_data = await handle_handshake(reader_clt, writer_clt)
     if not clt_data:
         writer_clt.transport.abort()
@@ -751,7 +746,13 @@ async def handle_client(reader_clt, writer_clt):
         else:
             tg_data = await do_direct_handshake(proto_tag, dc_idx)
     else:
-        tg_data = await do_middleproxy_handshake(peer, dc_idx)
+        flags = RpcFlags.EXTMODE2
+        if proto_tag == PROTO_TAG_ABRIDGED:
+            flags |= RpcFlags.PROTOCOL_ABRIDGED
+        elif proto_tag == PROTO_TAG_INTERMEDIATE:
+            flags |= RpcFlags.PROTOCOL_INTERMEDIATE
+
+        tg_data = await do_middleproxy_handshake(peer, flags, dc_idx)
 
     if not tg_data:
         writer_clt.transport.abort()
@@ -775,11 +776,9 @@ async def handle_client(reader_clt, writer_clt):
         if proto_tag == PROTO_TAG_ABRIDGED:
             reader_clt = MTProtoCompactFrameStreamReader(reader_clt, peer)
             writer_clt = MTProtoCompactFrameStreamWriter(writer_clt)
-            FLAGHACKS[peer] |= RpcFlags.PROTOCOL_ABRIDGED
         elif proto_tag == PROTO_TAG_INTERMEDIATE:
             reader_clt = MTProtoIntermediateFrameStreamReader(reader_clt, peer)
             writer_clt = MTProtoIntermediateFrameStreamWriter(writer_clt)
-            FLAGHACKS[peer] |= RpcFlags.PROTOCOL_INTERMEDIATE
 
     async def connect_reader_to_writer(rd, wr, peer, user):
         update_stats(user, curr_connects_x2=1)
@@ -800,7 +799,7 @@ async def handle_client(reader_clt, writer_clt):
             pass
         finally:
             wr.transport.abort()
-            del FLAGHACKS[peer]
+            del QUICK_ACK_EXPECTED[peer]
             update_stats(user, curr_connects_x2=-1)
 
     asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, peer, user))
