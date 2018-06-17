@@ -125,6 +125,8 @@ DC_IDX_POS = 60
 PROTO_TAG_ABRIDGED = b'\xef\xef\xef\xef'
 PROTO_TAG_INTERMEDIATE = b'\xee\xee\xee\xee'
 
+RPC_FLAG_QUICKACK = 0x80000000
+
 CBC_PADDING = 16
 PADDING_FILLER = b"\x04\x00\x00\x00"
 
@@ -341,7 +343,14 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
 class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
     async def read(self, buf_size):
         msg_len_bytes = await self.upstream.readexactly(4)
+
+        print(f'raw msg length: {binascii.hexlify(msg_len_bytes)}')
         msg_len = int.from_bytes(msg_len_bytes, "little")
+
+        if msg_len & RPC_FLAG_QUICKACK:
+            # just ignore this for now
+            msg_len &= ~RPC_FLAG_QUICKACK
+
         print(f'parsing medium packet, len: {msg_len}');
 
         data = await self.upstream.readexactly(msg_len)
