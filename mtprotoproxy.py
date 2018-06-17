@@ -338,12 +338,37 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
             return 0
 
 
+class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
+    async def read(self, buf_size):
+        msg_len_bytes = await self.upstream.readexactly(4)
+        msg_len = int.from_bytes(msg_len_bytes, "little")
+        print(f'parsing medium packet, len: {msg_len}');
+
+        data = await self.upstream.readexactly(msg_len)
+
+        return data
+
+
+class MTProtoIntermediateFrameStreamWriter(LayeredStreamWriterBase):
+    def __init__(self, upstream, seq_no=0):
+        self.upstream = upstream
+        self.seq_no = seq_no
+
+    def write(self, data):
+        return self.upstream.write(
+            int.to_bytes(len(data), 4, 'little') +
+            data
+        )
+
+
 class ProxyReqStreamReader(LayeredStreamReaderBase):
     async def read(self, msg):
         RPC_PROXY_ANS = b"\x0d\xda\x03\x44"
         RPC_CLOSE_EXT = b"\xa2\x34\xb6\x5e"
 
         data = await self.upstream.read(1)
+
+        print(f"middle proxy response size: {len(data)}")
 
         if len(data) < 4:
             return b""
@@ -360,8 +385,15 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, cl_ip, cl_port, my_ip, my_port):
+    def __init__(self, upstream, proto_tag, cl_ip, cl_port, my_ip, my_port):
         self.upstream = upstream
+
+        if proto_tag == PROTO_TAG_ABRIDGED:
+            self.proto_flag = b"\x40"
+        elif proto_tag == PROTO_TAG_INTERMEDIATE:
+            self.proto_flag = b"\x20"
+
+        self.proto_tag = proto_tag
 
         if ":" not in cl_ip:
             self.remote_ip_port = b"\x00" * 10 + b"\xff\xff"
@@ -382,7 +414,7 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
 
     def write(self, msg):
         RPC_PROXY_REQ = b"\xee\xf1\xce\x36"
-        FLAGS = b"\x10\x02\x40"
+        FLAGS = b"\x10\x02"
         EXTRA_SIZE = b"\x18\x00\x00\x00"
         PROXY_TAG = b"\xae\x26\x1e\xdb"
         FOUR_BYTES_ALIGNER = b"\x00\x00\x00"
@@ -392,12 +424,13 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             return 0
 
         full_msg = bytearray()
-        full_msg += RPC_PROXY_REQ + self.first_flag_byte + FLAGS + self.out_conn_id
+        full_msg += RPC_PROXY_REQ + self.first_flag_byte + FLAGS + self.proto_flag + self.out_conn_id
         full_msg += self.remote_ip_port + self.our_ip_port + EXTRA_SIZE + PROXY_TAG
         full_msg += bytes([len(AD_TAG)]) + AD_TAG + FOUR_BYTES_ALIGNER
         full_msg += msg
 
-        self.first_flag_byte = b"\x08"
+        if self.proto_tag == PROTO_TAG_INTERMEDIATE and len(msg) == 396: # FIXME this is a disaster
+            self.first_flag_byte = b"\x08"
         return self.upstream.write(full_msg)
 
 
@@ -536,7 +569,7 @@ def set_bufsizes(sock, recv_buf=READ_BUF_SIZE, send_buf=WRITE_BUF_SIZE):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
 
 
-async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
+async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     START_SEQ_NO = -2
     NONCE_LEN = 16
 
@@ -661,7 +694,7 @@ async def do_middleproxy_handshake(dc_idx, cl_ip, cl_port):
     if handshake_type != RPC_HANDSHAKE or handshake_peer_pid != SENDER_PID:
         return False
 
-    writer_tgt = ProxyReqStreamWriter(writer_tgt, cl_ip, cl_port, my_ip, my_port)
+    writer_tgt = ProxyReqStreamWriter(writer_tgt, proto_tag, cl_ip, cl_port, my_ip, my_port)
     reader_tgt = ProxyReqStreamReader(reader_tgt)
 
     return reader_tgt, writer_tgt
@@ -687,7 +720,7 @@ async def handle_client(reader_clt, writer_clt):
             tg_data = await do_direct_handshake(proto_tag, dc_idx)
     else:
         cl_ip, cl_port = writer_clt.upstream.get_extra_info('peername')[:2]
-        tg_data = await do_middleproxy_handshake(dc_idx, cl_ip, cl_port)
+        tg_data = await do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port)
 
     if not tg_data:
         writer_clt.transport.abort()
@@ -708,8 +741,12 @@ async def handle_client(reader_clt, writer_clt):
         writer_clt.encryptor = FakeEncryptor()
 
     if USE_MIDDLE_PROXY:
-        reader_clt = MTProtoCompactFrameStreamReader(reader_clt)
-        writer_clt = MTProtoCompactFrameStreamWriter(writer_clt)
+        if proto_tag == PROTO_TAG_ABRIDGED:
+            reader_clt = MTProtoCompactFrameStreamReader(reader_clt)
+            writer_clt = MTProtoCompactFrameStreamWriter(writer_clt)
+        elif proto_tag == PROTO_TAG_INTERMEDIATE:
+            reader_clt = MTProtoIntermediateFrameStreamReader(reader_clt)
+            writer_clt = MTProtoIntermediateFrameStreamWriter(writer_clt)
 
     async def connect_reader_to_writer(rd, wr, user):
         update_stats(user, curr_connects_x2=1)
