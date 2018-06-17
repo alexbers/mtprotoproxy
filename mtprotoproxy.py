@@ -782,7 +782,7 @@ async def handle_client(reader_clt, writer_clt):
             writer_clt = MTProtoIntermediateFrameStreamWriter(writer_clt)
             FLAGHACKS[peer] |= RpcFlags.PROTOCOL_INTERMEDIATE
 
-    async def connect_reader_to_writer(rd, wr, user):
+    async def connect_reader_to_writer(rd, wr, peer, user):
         update_stats(user, curr_connects_x2=1)
         try:
             while True:
@@ -801,10 +801,11 @@ async def handle_client(reader_clt, writer_clt):
             pass
         finally:
             wr.transport.abort()
+            del FLAGHACKS[peer]
             update_stats(user, curr_connects_x2=-1)
 
-    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, user))
-    asyncio.ensure_future(connect_reader_to_writer(reader_clt, writer_tg, user))
+    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, peer, user))
+    asyncio.ensure_future(connect_reader_to_writer(reader_clt, writer_tg, peer, user))
 
 
 async def handle_client_wrapper(reader, writer):
