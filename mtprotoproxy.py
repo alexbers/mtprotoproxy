@@ -322,7 +322,7 @@ class MTProtoCompactFrameStreamReader(LayeredStreamReaderBase):
             quickack = RpcFlags.QUICKACK
             msg_len -= 0x80
         else:
-            quickack = 0
+            quickack = RpcFlags.NONE
 
         FLAGHACKS[self.peer] = (
             (FLAGHACKS[self.peer] & ~RpcFlags.QUICKACK) | quickack
@@ -376,7 +376,6 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
         if msg_len & RpcFlags.QUICKACK.value:
-            # just ignore this for now
             msg_len &= ~RpcFlags.QUICKACK.value
             quickack = RpcFlags.QUICKACK
         else:
