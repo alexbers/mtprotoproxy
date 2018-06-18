@@ -324,6 +324,9 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
             print_err("BUG: MTProtoFrameStreamWriter attempted to send msg with len", len(data))
             return 0
 
+        if extra.get("SIMPLE_ACK"):
+            return self.upstream.write(data[::-1])
+
         len_div_four = len(data) // 4
 
         if len_div_four < SMALL_PKT_BORDER:
@@ -352,28 +355,38 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
 
 class MTProtoIntermediateFrameStreamWriter(LayeredStreamWriterBase):
     def write(self, data, extra={}):
-        return self.upstream.write(int.to_bytes(len(data), 4, 'little') + data)
+        if extra.get("SIMPLE_ACK"):
+            # fixme: it seems the connection on android closes here
+            return self.upstream.write(data)
+        else:
+            return self.upstream.write(int.to_bytes(len(data), 4, 'little') + data)
 
 
 class ProxyReqStreamReader(LayeredStreamReaderBase):
     async def read(self, msg):
         RPC_PROXY_ANS = b"\x0d\xda\x03\x44"
         RPC_CLOSE_EXT = b"\xa2\x34\xb6\x5e"
+        RPC_SIMPLE_ACK = b"\x9b\x40\xac\x3b"
 
         data = await self.upstream.read(1)
 
         if len(data) < 4:
             return b""
 
-        ans_type, ans_flags, conn_id, conn_data = data[:4], data[4:8], data[8:16], data[16:]
+        ans_type = data[:4]
         if ans_type == RPC_CLOSE_EXT:
             return b""
 
-        if ans_type != RPC_PROXY_ANS:
-            print_err("ans_type != RPC_PROXY_ANS", ans_type)
-            return b""
+        if ans_type == RPC_PROXY_ANS:
+            ans_flags, conn_id, conn_data = data[4:8], data[8:16], data[16:]
+            return conn_data
 
-        return conn_data
+        if ans_type == RPC_SIMPLE_ACK:
+            conn_id, confirm = data[4:12], data[12:16]
+            return confirm, {"SIMPLE_ACK": True}
+
+        print_err("unknown rpc ans type:", ans_type)
+        return b""
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
