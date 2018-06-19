@@ -11,6 +11,7 @@ import random
 import binascii
 import sys
 import re
+import runpy
 
 
 try:
@@ -59,21 +60,24 @@ except (ValueError, OSError):
 except ImportError:
     pass
 
+if len(sys.argv) > 1:
+    config = runpy.run_path(sys.argv[1])
+else:
+    config = runpy.run_module("config")
 
-import config
-PORT = getattr(config, "PORT")
-USERS = getattr(config, "USERS")
+PORT = config["PORT"]
+USERS = config["USERS"]
 
 # load advanced settings
-PREFER_IPV6 = getattr(config, "PREFER_IPV6", socket.has_ipv6)
+PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
 # disables tg->client trafic reencryption, faster but less secure
-FAST_MODE = getattr(config, "FAST_MODE", True)
-STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
-PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60*60*24)
-READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 16384)
-WRITE_BUF_SIZE = getattr(config, "WRITE_BUF_SIZE", 65536)
-CLIENT_KEEPALIVE = getattr(config, "CLIENT_KEEPALIVE", 60*30)
-AD_TAG = bytes.fromhex(getattr(config, "AD_TAG", ""))
+FAST_MODE = config.get("FAST_MODE", True)
+STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
+PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 60*60*24)
+READ_BUF_SIZE = config.get("READ_BUF_SIZE", 16384)
+WRITE_BUF_SIZE = config.get("WRITE_BUF_SIZE", 65536)
+CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 60*30)
+AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
 
 TG_DATACENTER_PORT = 443
 
