@@ -356,7 +356,6 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
 class MTProtoIntermediateFrameStreamWriter(LayeredStreamWriterBase):
     def write(self, data, extra={}):
         if extra.get("SIMPLE_ACK"):
-            # fixme: it seems the connection on android closes here
             return self.upstream.write(data)
         else:
             return self.upstream.write(int.to_bytes(len(data), 4, 'little') + data)
