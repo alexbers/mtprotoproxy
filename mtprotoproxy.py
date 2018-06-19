@@ -966,7 +966,7 @@ def loop_exception_handler(loop, context):
 def main():
     init_stats()
 
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
         asyncio.set_event_loop(loop)
 
@@ -980,13 +980,15 @@ def main():
         middle_proxy_updater_task = asyncio.Task(update_middle_proxy_info())
         asyncio.ensure_future(middle_proxy_updater_task)
 
-    task_v4 = asyncio.start_server(handle_client_wrapper,
-                                   '0.0.0.0', PORT, limit=READ_BUF_SIZE, loop=loop)
+    reuse_port = (sys.platform != "win32")
+
+    task_v4 = asyncio.start_server(handle_client_wrapper, '0.0.0.0', PORT,
+                                   limit=READ_BUF_SIZE, reuse_port=reuse_port, loop=loop)
     server_v4 = loop.run_until_complete(task_v4)
 
     if socket.has_ipv6:
-        task_v6 = asyncio.start_server(handle_client_wrapper,
-                                       '::', PORT, limit=READ_BUF_SIZE, loop=loop)
+        task_v6 = asyncio.start_server(handle_client_wrapper, '::', PORT,
+                                       limit=READ_BUF_SIZE, reuse_port=reuse_port, loop=loop)
         server_v6 = loop.run_until_complete(task_v6)
 
     try:
