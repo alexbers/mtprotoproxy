@@ -29,7 +29,7 @@ setuptools.setup(
         ]
     },
     scripts=[
-        "mtprotoproxy.py"
+        "mtprotoproxy.py", "mtprotoproxy"
     ],
     classifiers=[
         "Intended Audience :: Information Technology",
