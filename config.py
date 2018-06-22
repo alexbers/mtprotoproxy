@@ -8,3 +8,5 @@ USERS = {
 
 # Tag for advertising, obtainable from @MTProxybot
 AD_TAG = os.getenv('conf_ad_tag')
+
+FAST_MODE = True
