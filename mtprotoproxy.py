@@ -65,10 +65,22 @@ except (ValueError, OSError):
 except ImportError:
     pass
 
-if len(sys.argv) > 1:
-    config = runpy.run_path(sys.argv[1])
+# if len(sys.argv) > 1:
+#     config = runpy.run_path(sys.argv[1])
+# else:
+#     config = runpy.run_module("config")
+
+if len(sys.argv) < 3:
+    print("Usage: mtprotoproxy <port> <secret> [ad_tag]")
+    print("Example: mtprotoproxy 3256 0123456789abcdef0123456789abcdef 3c09c680b76ee91a4c25ad51f742267d")
+    sys.exit(0)
 else:
-    config = runpy.run_module("config")
+    config = {}
+    config["PORT"] = int(sys.argv[1])
+    config["USERS"] = {"tg": sys.argv[2]}
+    if len(sys.argv) >= 4:
+        config["AD_TAG"] = sys.argv[3]
+
 
 PORT = config["PORT"]
 USERS = config["USERS"]
