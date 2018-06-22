@@ -1,10 +1,10 @@
-PORT = 3256
+import os
+PORT = os.getenv('conf_port')
 
 # name -> secret (32 hex chars)
 USERS = {
-    "tg":  "00000000000000000000000000000000",
-    "tg2": "0123456789abcdef0123456789abcdef"
+    "tg":  os.getenv('conf_secret'),
 }
 
 # Tag for advertising, obtainable from @MTProxybot
-# AD_TAG = "3c09c680b76ee91a4c25ad51f742267d"
+AD_TAG = os.getenv('conf_ad_tag')
