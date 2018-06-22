@@ -13,6 +13,11 @@ import sys
 import re
 import runpy
 
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass
 
 try:
     from Crypto.Cipher import AES
