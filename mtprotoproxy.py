@@ -153,13 +153,13 @@ def init_stats():
     stats = {user: collections.Counter() for user in USERS}
 
 
-def update_stats(user, connects=0, curr_connects_x2=0, octets=0):
+def update_stats(user, connects=0, curr_connects=0, octets=0):
     global stats
 
     if user not in stats:
         stats[user] = collections.Counter()
 
-    stats[user].update(connects=connects, curr_connects_x2=curr_connects_x2,
+    stats[user].update(connects=connects, curr_connects=curr_connects,
                        octets=octets)
 
 
@@ -779,7 +779,6 @@ async def handle_client(reader_clt, writer_clt):
             return
 
     async def connect_reader_to_writer(rd, wr, user):
-        update_stats(user, curr_connects_x2=1)
         try:
             while True:
                 data = await rd.read(READ_BUF_SIZE)
@@ -802,12 +801,13 @@ async def handle_client(reader_clt, writer_clt):
             pass
         finally:
             wr.transport.abort()
-            update_stats(user, curr_connects_x2=-1)
 
     task_tg_to_clt = connect_reader_to_writer(reader_tg, writer_clt, user)
     task_clt_to_tg = connect_reader_to_writer(reader_clt, writer_tg, user)
 
+    update_stats(user, curr_connects=1)
     await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
+    update_stats(user, curr_connects=-1)
     writer_tg.transport.abort()
 
 
@@ -828,7 +828,7 @@ async def stats_printer():
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
         for user, stat in stats.items():
             print("%s: %d connects (%d current), %.2f MB" % (
-                user, stat["connects"], stat["curr_connects_x2"] // 2,
+                user, stat["connects"], stat["curr_connects"],
                 stat["octets"] / 1000000))
         print(flush=True)
 
