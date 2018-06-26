@@ -801,18 +801,22 @@ async def handle_client(reader_clt, writer_clt):
                     update_stats(user, octets=len(data))
                     wr.write(data, extra)
                     await wr.drain()
-        except (OSError, AttributeError, asyncio.streams.IncompleteReadError) as e:
+        except (OSError, asyncio.streams.IncompleteReadError) as e:
             # print_err(e)
             pass
         finally:
             wr.transport.abort()
 
-    task_tg_to_clt = connect_reader_to_writer(reader_tg, writer_clt, user)
-    task_clt_to_tg = connect_reader_to_writer(reader_clt, writer_tg, user)
+    task_tg_to_clt = asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, user))
+    task_clt_to_tg = asyncio.ensure_future(connect_reader_to_writer(reader_clt, writer_tg, user))
 
     update_stats(user, curr_connects=1)
     await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
     update_stats(user, curr_connects=-1)
+
+    task_tg_to_clt.cancel()
+    task_clt_to_tg.cancel()
+
     writer_tg.transport.abort()
 
 
