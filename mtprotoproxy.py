@@ -487,6 +487,11 @@ async def handle_handshake(reader, writer):
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
         return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv
+
+    while True:
+        # just consume all the data
+        await reader.read(READ_BUF_SIZE)
+
     return False
 
 
