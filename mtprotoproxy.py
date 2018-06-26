@@ -745,6 +745,8 @@ async def handle_client(reader_clt, writer_clt):
 
     reader_clt, writer_clt, proto_tag, user, dc_idx, enc_key_and_iv = clt_data
 
+    update_stats(user, connects=1)
+
     if not USE_MIDDLE_PROXY:
         if FAST_MODE:
             tg_data = await do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=enc_key_and_iv)
@@ -756,8 +758,6 @@ async def handle_client(reader_clt, writer_clt):
 
     if not tg_data:
         return
-
-    update_stats(user, connects=1)
 
     reader_tg, writer_tg = tg_data
 
