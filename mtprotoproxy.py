@@ -66,12 +66,12 @@ except (ValueError, OSError):
 except ImportError:
     pass
 
+if hasattr(signal, 'SIGUSR1'):
+    def debug_signal(signum, frame):
+        import pdb
+        pdb.set_trace()
 
-def debug_signal(signum, frame):
-    import pdb
-    pdb.set_trace()
-
-signal.signal(signal.SIGUSR1, debug_signal)
+    signal.signal(signal.SIGUSR1, debug_signal)
 
 if len(sys.argv) > 1:
     config = runpy.run_path(sys.argv[1])
