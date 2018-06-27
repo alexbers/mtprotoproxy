@@ -73,10 +73,18 @@ if hasattr(signal, 'SIGUSR1'):
 
     signal.signal(signal.SIGUSR1, debug_signal)
 
-if len(sys.argv) > 1:
+if len(sys.argv) < 2:
+    config = runpy.run_module("config")
+elif len(sys.argv) == 2:
     config = runpy.run_path(sys.argv[1])
 else:
-    config = runpy.run_module("config")
+    # undocumented way of launching
+    config = {}
+    config["PORT"] = int(sys.argv[1])
+    secrets = sys.argv[2].split(",")
+    config["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
+    if len(sys.argv) > 3:
+        config["AD_TAG"] = sys.argv[3]
 
 PORT = config["PORT"]
 USERS = config["USERS"]
