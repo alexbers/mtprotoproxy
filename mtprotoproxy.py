@@ -803,7 +803,6 @@ async def handle_client(reader_clt, writer_clt):
                 if not data:
                     wr.write_eof()
                     await wr.drain()
-                    wr.close()
                     return
                 else:
                     update_stats(user, octets=len(data))
@@ -812,8 +811,6 @@ async def handle_client(reader_clt, writer_clt):
         except (OSError, asyncio.streams.IncompleteReadError) as e:
             # print_err(e)
             pass
-        finally:
-            wr.transport.abort()
 
     task_tg_to_clt = asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, user))
     task_clt_to_tg = asyncio.ensure_future(connect_reader_to_writer(reader_clt, writer_tg, user))
