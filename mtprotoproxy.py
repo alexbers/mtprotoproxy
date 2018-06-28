@@ -1069,7 +1069,7 @@ def main():
         middle_proxy_updater_task = asyncio.Task(update_middle_proxy_info())
         asyncio.ensure_future(middle_proxy_updater_task)
 
-    reuse_port = (sys.platform != "win32")
+    reuse_port = hasattr(socket, "SO_REUSEPORT")
 
     task_v4 = asyncio.start_server(handle_client_wrapper, '0.0.0.0', PORT,
                                    limit=READ_BUF_SIZE, reuse_port=reuse_port, loop=loop)
