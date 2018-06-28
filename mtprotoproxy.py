@@ -12,6 +12,7 @@ import binascii
 import sys
 import re
 import runpy
+import signal
 
 try:
     import uvloop
@@ -19,7 +20,46 @@ try:
 except ImportError:
     pass
 
-try:
+
+def try_use_cryptography_module():
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+
+    def create_aes_ctr(key, iv):
+        class EncryptorAdapter:
+            def __init__(self, cipher):
+                self.encryptor = cipher.encryptor()
+                self.decryptor = cipher.decryptor()
+
+            def encrypt(self, data):
+                return self.encryptor.update(data)
+
+            def decrypt(self, data):
+                return self.decryptor.update(data)
+
+        iv_bytes = int.to_bytes(iv, 16, "big")
+        cipher = Cipher(algorithms.AES(key), modes.CTR(iv_bytes), default_backend())
+        return EncryptorAdapter(cipher)
+
+    def create_aes_cbc(key, iv):
+        class EncryptorAdapter:
+            def __init__(self, cipher):
+                self.encryptor = cipher.encryptor()
+                self.decryptor = cipher.decryptor()
+
+            def encrypt(self, data):
+                return self.encryptor.update(data)
+
+            def decrypt(self, data):
+                return self.decryptor.update(data)
+
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), default_backend())
+        return EncryptorAdapter(cipher)
+
+    return create_aes_ctr, create_aes_cbc
+
+
+def try_use_pycrypto_or_pycryptodome_module():
     from Crypto.Cipher import AES
     from Crypto.Util import Counter
 
@@ -30,10 +70,15 @@ try:
     def create_aes_cbc(key, iv):
         return AES.new(key, AES.MODE_CBC, iv)
 
-except ImportError:
-    print("Failed to find pycryptodome or pycrypto, using slow AES implementation",
-          flush=True, file=sys.stderr)
+    return create_aes_ctr, create_aes_cbc
+
+
+def use_slow_bundled_cryptography_module():
     import pyaes
+
+    msg = "To make the program a *lot* faster, please install cryptography module: "
+    msg += "pip install cryptography\n"
+    print(msg, flush=True, file=sys.stderr)
 
     def create_aes_ctr(key, iv):
         ctr = pyaes.Counter(iv)
@@ -54,7 +99,16 @@ except ImportError:
 
         mode = pyaes.AESModeOfOperationCBC(key, iv)
         return EncryptorAdapter(mode)
+    return create_aes_ctr, create_aes_cbc
 
+
+try:
+    create_aes_ctr, create_aes_cbc = try_use_cryptography_module()
+except ImportError:
+    try:
+        create_aes_ctr, create_aes_cbc = try_use_pycrypto_or_pycryptodome_module()
+    except ImportError:
+        create_aes_ctr, create_aes_cbc = use_slow_bundled_cryptography_module()
 
 try:
     import resource
@@ -65,25 +119,34 @@ except (ValueError, OSError):
 except ImportError:
     pass
 
-# if len(sys.argv) > 1:
-#     config = runpy.run_path(sys.argv[1])
-# else:
-#     config = runpy.run_module("config")
+if hasattr(signal, 'SIGUSR1'):
+    def debug_signal(signum, frame):
+        import pdb
+        pdb.set_trace()
+
+    signal.signal(signal.SIGUSR1, debug_signal)
 
 if len(sys.argv) < 3:
     print("Usage: mtprotoproxy <port> <secret> [ad_tag]")
     print("Example: mtprotoproxy 3256 0123456789abcdef0123456789abcdef 3c09c680b76ee91a4c25ad51f742267d")
     sys.exit(0)
+
+if len(sys.argv) < 2:
+    config = runpy.run_module("config")
+elif len(sys.argv) == 2:
+    config = runpy.run_path(sys.argv[1])
 else:
+    # undocumented way of launching
     config = {}
     config["PORT"] = int(sys.argv[1])
-    config["USERS"] = {"tg": sys.argv[2]}
-    if len(sys.argv) >= 4:
+    secrets = sys.argv[2].split(",")
+    config["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
+    if len(sys.argv) > 3:
         config["AD_TAG"] = sys.argv[3]
-
 
 PORT = config["PORT"]
 USERS = config["USERS"]
+AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
 
 # load advanced settings
 PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
@@ -94,7 +157,7 @@ PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 60*60*24)
 READ_BUF_SIZE = config.get("READ_BUF_SIZE", 16384)
 WRITE_BUF_SIZE = config.get("WRITE_BUF_SIZE", 65536)
 CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 60*30)
-AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
+CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
 
 TG_DATACENTER_PORT = 443
 
@@ -164,13 +227,13 @@ def init_stats():
     stats = {user: collections.Counter() for user in USERS}
 
 
-def update_stats(user, connects=0, curr_connects_x2=0, octets=0):
+def update_stats(user, connects=0, curr_connects=0, octets=0):
     global stats
 
     if user not in stats:
         stats[user] = collections.Counter()
 
-    stats[user].update(connects=connects, curr_connects_x2=curr_connects_x2,
+    stats[user].update(connects=connects, curr_connects=curr_connects,
                        octets=octets)
 
 
@@ -498,6 +561,11 @@ async def handle_handshake(reader, writer):
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
         return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv
+
+    while await reader.read(READ_BUF_SIZE):
+        # just consume all the data
+        pass
+
     return False
 
 
@@ -740,9 +808,13 @@ async def handle_client(reader_clt, writer_clt):
     set_keepalive(writer_clt.get_extra_info("socket"), CLIENT_KEEPALIVE)
     set_bufsizes(writer_clt.get_extra_info("socket"))
 
-    clt_data = await handle_handshake(reader_clt, writer_clt)
+    try:
+        clt_data = await asyncio.wait_for(handle_handshake(reader_clt, writer_clt),
+                                          timeout=CLIENT_HANDSHAKE_TIMEOUT)
+    except asyncio.TimeoutError:
+        return
+
     if not clt_data:
-        writer_clt.transport.abort()
         return
 
     reader_clt, writer_clt, proto_tag, user, dc_idx, enc_key_and_iv = clt_data
@@ -759,7 +831,6 @@ async def handle_client(reader_clt, writer_clt):
         tg_data = await do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port)
 
     if not tg_data:
-        writer_clt.transport.abort()
         return
 
     reader_tg, writer_tg = tg_data
@@ -787,7 +858,6 @@ async def handle_client(reader_clt, writer_clt):
             return
 
     async def connect_reader_to_writer(rd, wr, user):
-        update_stats(user, curr_connects_x2=1)
         try:
             while True:
                 data = await rd.read(READ_BUF_SIZE)
@@ -799,27 +869,34 @@ async def handle_client(reader_clt, writer_clt):
                 if not data:
                     wr.write_eof()
                     await wr.drain()
-                    wr.close()
                     return
                 else:
                     update_stats(user, octets=len(data))
                     wr.write(data, extra)
                     await wr.drain()
-        except (OSError, AttributeError, asyncio.streams.IncompleteReadError) as e:
+        except (OSError, asyncio.streams.IncompleteReadError) as e:
             # print_err(e)
             pass
-        finally:
-            wr.transport.abort()
-            update_stats(user, curr_connects_x2=-1)
 
-    asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, user))
-    asyncio.ensure_future(connect_reader_to_writer(reader_clt, writer_tg, user))
+    task_tg_to_clt = asyncio.ensure_future(connect_reader_to_writer(reader_tg, writer_clt, user))
+    task_clt_to_tg = asyncio.ensure_future(connect_reader_to_writer(reader_clt, writer_tg, user))
+
+    update_stats(user, curr_connects=1)
+    await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
+    update_stats(user, curr_connects=-1)
+
+    task_tg_to_clt.cancel()
+    task_clt_to_tg.cancel()
+
+    writer_tg.transport.abort()
 
 
 async def handle_client_wrapper(reader, writer):
     try:
         await handle_client(reader, writer)
     except (asyncio.IncompleteReadError, ConnectionResetError, TimeoutError):
+        pass
+    finally:
         writer.transport.abort()
 
 
@@ -831,7 +908,7 @@ async def stats_printer():
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
         for user, stat in stats.items():
             print("%s: %d connects (%d current), %.2f MB" % (
-                user, stat["connects"], stat["curr_connects_x2"] // 2,
+                user, stat["connects"], stat["curr_connects"],
                 stat["octets"] / 1000000))
         print(flush=True)
 

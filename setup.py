@@ -7,7 +7,7 @@ with open("README.md", "rt") as readme_fp:
 
 setuptools.setup(
     name="mtprotoproxy",
-    version="0.9.2",
+    version="0.9.4",
     description="Async MTProto Proxy",
     long_description=long_description,
     url="https://github.com/alexbers/mtprotoproxy",
@@ -23,9 +23,6 @@ setuptools.setup(
     extras_require={
         "uvloop": [
             "uvloop~=0.10.1"
-        ],
-        "pyaes": [
-            "pyaes~=1.6.1"
         ]
     },
     scripts=[
