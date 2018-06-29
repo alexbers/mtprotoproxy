@@ -430,6 +430,10 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
 
         data = await self.upstream.readexactly(msg_len)
 
+        if msg_len % 4 != 0:
+            cut_border = msg_len - (msg_len % 4)
+            data = data[:cut_border]
+
         return data, extra
 
 
@@ -847,7 +851,7 @@ async def handle_client(reader_clt, writer_clt):
         if proto_tag == PROTO_TAG_ABRIDGED:
             reader_clt = MTProtoCompactFrameStreamReader(reader_clt)
             writer_clt = MTProtoCompactFrameStreamWriter(writer_clt)
-        elif proto_tag == PROTO_TAG_INTERMEDIATE:
+        elif proto_tag in (PROTO_TAG_INTERMEDIATE, PROTO_TAG_SECURE):
             reader_clt = MTProtoIntermediateFrameStreamReader(reader_clt)
             writer_clt = MTProtoIntermediateFrameStreamWriter(writer_clt)
         else:
@@ -1032,6 +1036,10 @@ def print_tg_info():
             params = {"server": ip, "port": PORT, "secret": secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
             print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+
+            params = {"server": ip, "port": PORT, "secret": "dd" + secret}
+            params_encodeded = urllib.parse.urlencode(params, safe=':')
+            print("{}: tg://proxy?{} (beta)".format(user, params_encodeded), flush=True)
 
 
 def loop_exception_handler(loop, context):
