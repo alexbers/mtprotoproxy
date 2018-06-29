@@ -203,6 +203,7 @@ DC_IDX_POS = 60
 
 PROTO_TAG_ABRIDGED = b"\xef\xef\xef\xef"
 PROTO_TAG_INTERMEDIATE = b"\xee\xee\xee\xee"
+PROTO_TAG_SECURE = b"\xdd\xdd\xdd\xdd"
 
 CBC_PADDING = 16
 PADDING_FILLER = b"\x04\x00\x00\x00"
@@ -548,7 +549,7 @@ async def handle_handshake(reader, writer):
         decrypted = decryptor.decrypt(handshake)
 
         proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS+4]
-        if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE):
+        if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE, PROTO_TAG_SECURE):
             continue
 
         dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
