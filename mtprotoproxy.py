@@ -570,6 +570,21 @@ async def handle_handshake(reader, writer):
     return False
 
 
+def set_keepalive(sock, interval=40, attempts=5):
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    if hasattr(socket, "TCP_KEEPIDLE"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, interval)
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval)
+    if hasattr(socket, "TCP_KEEPCNT"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, attempts)
+
+
+def set_bufsizes(sock, recv_buf, send_buf):
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, recv_buf)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
+
+
 async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
     RESERVED_NONCE_FIRST_CHARS = [b"\xef"]
     RESERVED_NONCE_BEGININGS = [b"\x48\x45\x41\x44", b"\x50\x4F\x53\x54",
@@ -590,6 +605,9 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
     try:
         reader_tgt, writer_tgt = await asyncio.open_connection(dc, TG_DATACENTER_PORT,
                                                                limit=TO_CLT_BUFSIZE)
+        set_keepalive(writer_tgt.get_extra_info("socket"))
+        set_bufsizes(writer_tgt.get_extra_info("socket"), TO_CLT_BUFSIZE, TO_TG_BUFSIZE)
+
     except ConnectionRefusedError as E:
         print_err("Got connection refused while trying to connect to", dc, TG_DATACENTER_PORT)
         return False
@@ -657,21 +675,6 @@ def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_por
     key = md5_sum[:12] + sha1_sum
     iv = hashlib.md5(s[2:]).digest()
     return key, iv
-
-
-def set_keepalive(sock, interval=40, attempts=5):
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    if hasattr(socket, "TCP_KEEPIDLE"):
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, interval)
-    if hasattr(socket, "TCP_KEEPINTVL"):
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval)
-    if hasattr(socket, "TCP_KEEPCNT"):
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, attempts)
-
-
-def set_bufsizes(sock, recv_buf, send_buf):
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, recv_buf)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
 
 
 async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
