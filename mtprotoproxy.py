@@ -1066,7 +1066,8 @@ def loop_exception_handler(loop, context):
                 return
         if isinstance(exception, OSError):
             IGNORE_ERRNO = {
-                10038  # operation on non-socket on Windows, likely because fd == -1
+                10038,  # operation on non-socket on Windows, likely because fd == -1
+                113     # no route to host
             }
             if exception.errno in IGNORE_ERRNO:
                 return
