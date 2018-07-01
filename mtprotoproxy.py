@@ -224,14 +224,14 @@ def init_stats():
     stats = {user: collections.Counter() for user in USERS}
 
 
-def update_stats(user, connects=0, curr_connects=0, octets=0):
+def update_stats(user, connects=0, curr_connects=0, octets=0, msgs=0):
     global stats
 
     if user not in stats:
         stats[user] = collections.Counter()
 
     stats[user].update(connects=connects, curr_connects=curr_connects,
-                       octets=octets)
+                       octets=octets, msgs=msgs)
 
 
 class LayeredStreamReaderBase:
@@ -882,7 +882,7 @@ async def handle_client(reader_clt, writer_clt):
                     await wr.drain()
                     return
                 else:
-                    update_stats(user, octets=len(data))
+                    update_stats(user, octets=len(data), msgs=1)
                     wr.write(data, extra)
                     await wr.drain()
         except (OSError, asyncio.streams.IncompleteReadError) as e:
@@ -920,9 +920,9 @@ async def stats_printer():
 
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
         for user, stat in stats.items():
-            print("%s: %d connects (%d current), %.2f MB" % (
+            print("%s: %d connects (%d current), %.2f MB, %d msgs" % (
                 user, stat["connects"], stat["curr_connects"],
-                stat["octets"] / 1000000))
+                stat["octets"] / 1000000, stat["msgs"]))
         print(flush=True)
 
 
