@@ -153,6 +153,7 @@ TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 8192)
 TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
 CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 60*30)
 CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
+CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5 * 60)
 
 TG_DATACENTER_PORT = 443
 
@@ -580,6 +581,11 @@ def set_keepalive(sock, interval=40, attempts=5):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, attempts)
 
 
+def set_ack_timeout(sock, timeout):
+    if hasattr(socket, "TCP_USER_TIMEOUT"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, timeout*1000)
+
+
 def set_bufsizes(sock, recv_buf, send_buf):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, recv_buf)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
@@ -810,6 +816,7 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
 
 async def handle_client(reader_clt, writer_clt):
     set_keepalive(writer_clt.get_extra_info("socket"), CLIENT_KEEPALIVE)
+    set_ack_timeout(writer_clt.get_extra_info("socket"), CLIENT_ACK_TIMEOUT)
     set_bufsizes(writer_clt.get_extra_info("socket"), TO_TG_BUFSIZE, TO_CLT_BUFSIZE)
 
     try:
