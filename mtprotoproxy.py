@@ -148,12 +148,12 @@ PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = config.get("FAST_MODE", True)
 STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
-PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 60*60*24)
+PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
 TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 8192)
 TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
-CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 60*30)
+CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 10*60)
 CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
-CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5 * 60)
+CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5*60)
 
 TG_DATACENTER_PORT = 443
 
@@ -815,7 +815,7 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
 
 
 async def handle_client(reader_clt, writer_clt):
-    set_keepalive(writer_clt.get_extra_info("socket"), CLIENT_KEEPALIVE)
+    set_keepalive(writer_clt.get_extra_info("socket"), CLIENT_KEEPALIVE, attempts=3)
     set_ack_timeout(writer_clt.get_extra_info("socket"), CLIENT_ACK_TIMEOUT)
     set_bufsizes(writer_clt.get_extra_info("socket"), TO_TG_BUFSIZE, TO_CLT_BUFSIZE)
 
@@ -1061,16 +1061,23 @@ def loop_exception_handler(loop, context):
     if exception:
         if isinstance(exception, TimeoutError):
             if transport:
-                print_err("Timeout, killing transport")
                 transport.abort()
                 return
         if isinstance(exception, OSError):
             IGNORE_ERRNO = {
                 10038,  # operation on non-socket on Windows, likely because fd == -1
-                113     # no route to host
+            }
+
+            FORCE_CLOSE_ERRNO = {
+                113,    # no route to host
+
             }
             if exception.errno in IGNORE_ERRNO:
                 return
+            elif exception.errno in FORCE_CLOSE_ERRNO:
+                if transport:
+                    transport.abort()
+                    return
 
     loop.default_exception_handler(context)
 
