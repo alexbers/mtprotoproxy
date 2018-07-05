@@ -1066,6 +1066,7 @@ def loop_exception_handler(loop, context):
         if isinstance(exception, OSError):
             IGNORE_ERRNO = {
                 10038,  # operation on non-socket on Windows, likely because fd == -1
+                121,    # the semaphore timeout period has expired on Windows
             }
 
             FORCE_CLOSE_ERRNO = {
