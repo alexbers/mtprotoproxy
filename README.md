@@ -24,3 +24,4 @@ The proxy can be launched:
 - with a custom config: `python3 mtprotoproxy.py [configfile]`
 - several times, clients will be automaticaly balanced between instances
 - using *PyPy* interprteter
+- with runtime statistics exported for [Prometheus](https://prometheus.io/): using [prometheus](https://github.com/alexbers/mtprotoproxy/tree/prometheus) branch
