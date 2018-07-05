@@ -7,7 +7,7 @@ with open("README.md", "rt") as readme_fp:
 
 setuptools.setup(
     name="mtprotoproxy",
-    version="0.9.4",
+    version="1.0.0",
     description="Async MTProto Proxy",
     long_description=long_description,
     url="https://github.com/alexbers/mtprotoproxy",
