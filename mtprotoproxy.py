@@ -604,7 +604,7 @@ async def open_connection_tryer(addr, port, limit, timeout, max_attempts=3):
     # the last attempt
     task = asyncio.open_connection(addr, port, limit=limit)
     reader_tgt, writer_tgt = await asyncio.wait_for(task, timeout=timeout)
-    return reader_tgt, writer_tgts
+    return reader_tgt, writer_tgt
 
 
 async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
