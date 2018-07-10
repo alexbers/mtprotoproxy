@@ -1,4 +1,4 @@
-FROM alpine:3.6
+FROM alpine:3.8
 
 RUN adduser tgproxy -u 10000 -D
 
