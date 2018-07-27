@@ -11,150 +11,15 @@ import random
 import binascii
 import sys
 import re
-import runpy
 import signal
+from config_loader import load_config
+from mtcrypto import create_aes_ctr, create_aes_cbc
+from stats import SetStat, UserStats, IPStats
+from utils import \
+    dict_get_or_else, \
+    print_err, \
+    LayeredStreamReaderBase, LayeredStreamWriterBase
 
-try:
-    import uvloop
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-except ImportError:
-    pass
-
-
-def try_use_cryptography_module():
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    from cryptography.hazmat.backends import default_backend
-
-    def create_aes_ctr(key, iv):
-        class EncryptorAdapter:
-            def __init__(self, cipher):
-                self.encryptor = cipher.encryptor()
-                self.decryptor = cipher.decryptor()
-
-            def encrypt(self, data):
-                return self.encryptor.update(data)
-
-            def decrypt(self, data):
-                return self.decryptor.update(data)
-
-        iv_bytes = int.to_bytes(iv, 16, "big")
-        cipher = Cipher(algorithms.AES(key), modes.CTR(iv_bytes), default_backend())
-        return EncryptorAdapter(cipher)
-
-    def create_aes_cbc(key, iv):
-        class EncryptorAdapter:
-            def __init__(self, cipher):
-                self.encryptor = cipher.encryptor()
-                self.decryptor = cipher.decryptor()
-
-            def encrypt(self, data):
-                return self.encryptor.update(data)
-
-            def decrypt(self, data):
-                return self.decryptor.update(data)
-
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), default_backend())
-        return EncryptorAdapter(cipher)
-
-    return create_aes_ctr, create_aes_cbc
-
-
-def try_use_pycrypto_or_pycryptodome_module():
-    from Crypto.Cipher import AES
-    from Crypto.Util import Counter
-
-    def create_aes_ctr(key, iv):
-        ctr = Counter.new(128, initial_value=iv)
-        return AES.new(key, AES.MODE_CTR, counter=ctr)
-
-    def create_aes_cbc(key, iv):
-        return AES.new(key, AES.MODE_CBC, iv)
-
-    return create_aes_ctr, create_aes_cbc
-
-
-def use_slow_bundled_cryptography_module():
-    import pyaes
-
-    msg = "To make the program a *lot* faster, please install cryptography module: "
-    msg += "pip install cryptography\n"
-    print(msg, flush=True, file=sys.stderr)
-
-    def create_aes_ctr(key, iv):
-        ctr = pyaes.Counter(iv)
-        return pyaes.AESModeOfOperationCTR(key, ctr)
-
-    def create_aes_cbc(key, iv):
-        class EncryptorAdapter:
-            def __init__(self, mode):
-                self.mode = mode
-
-            def encrypt(self, data):
-                encrypter = pyaes.Encrypter(self.mode, pyaes.PADDING_NONE)
-                return encrypter.feed(data) + encrypter.feed()
-
-            def decrypt(self, data):
-                decrypter = pyaes.Decrypter(self.mode, pyaes.PADDING_NONE)
-                return decrypter.feed(data) + decrypter.feed()
-
-        mode = pyaes.AESModeOfOperationCBC(key, iv)
-        return EncryptorAdapter(mode)
-    return create_aes_ctr, create_aes_cbc
-
-
-try:
-    create_aes_ctr, create_aes_cbc = try_use_cryptography_module()
-except ImportError:
-    try:
-        create_aes_ctr, create_aes_cbc = try_use_pycrypto_or_pycryptodome_module()
-    except ImportError:
-        create_aes_ctr, create_aes_cbc = use_slow_bundled_cryptography_module()
-
-try:
-    import resource
-    soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
-except (ValueError, OSError):
-    print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
-except ImportError:
-    pass
-
-if hasattr(signal, 'SIGUSR1'):
-    def debug_signal(signum, frame):
-        import pdb
-        pdb.set_trace()
-
-    signal.signal(signal.SIGUSR1, debug_signal)
-
-if len(sys.argv) < 2:
-    config = runpy.run_module("config")
-elif len(sys.argv) == 2:
-    config = runpy.run_path(sys.argv[1])
-else:
-    # undocumented way of launching
-    config = {}
-    config["PORT"] = int(sys.argv[1])
-    secrets = sys.argv[2].split(",")
-    config["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
-    if len(sys.argv) > 3:
-        config["AD_TAG"] = sys.argv[3]
-
-PORT = config["PORT"]
-USERS = config["USERS"]
-AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
-
-# load advanced settings
-PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
-# disables tg->client trafic reencryption, faster but less secure
-FAST_MODE = config.get("FAST_MODE", True)
-STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
-PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
-TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 16384)
-TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
-CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 10*60)
-CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
-CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5*60)
-TG_CONNECT_TIMEOUT = config.get("TG_CONNECT_TIMEOUT", 10)
 
 TG_DATACENTER_PORT = 443
 
@@ -185,9 +50,6 @@ TG_MIDDLE_PROXIES_V6 = {
     5: [("2001:b28:f23f:f005::d", 8888)], -5: [("2001:67c:04e8:f004::d", 8888)]
 }
 
-
-USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
-
 PROXY_SECRET = bytes.fromhex(
     "c4f9faca9678e6bb48ad6c7e2ce5c0d24430645d554addeb55419e034da62721" +
     "d046eaab6e52ab14a95a443ecfb3463e79a05a66612adf9caeda8be9a80da698" +
@@ -216,58 +78,42 @@ MAX_MSG_LEN = 2 ** 24
 my_ip_info = {"ipv4": None, "ipv6": None}
 
 
-def print_err(*params):
-    print(*params, file=sys.stderr, flush=True)
+async def update_stats(user, ip, **kwargs):
+    global user_stats
+    global ip_stats
+
+    dict_get_or_else(user_stats, user, UserStats) \
+        .update(**{k: v for k, v in kwargs.items() if k != "users"})
+
+    dict_get_or_else(ip_stats, user, IPStats) \
+        .update(**{k: v for k, v in kwargs.items() if k != "ips"})
+
+    await STATS_UPDATE_HOOK(user, ip, kwargs)
 
 
-def init_stats():
-    global stats
-    stats = {user: collections.Counter() for user in USERS}
+def setup_uvloop():
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
-def update_stats(user, connects=0, curr_connects=0, octets=0, msgs=0):
-    global stats
-
-    if user not in stats:
-        stats[user] = collections.Counter()
-
-    stats[user].update(connects=connects, curr_connects=curr_connects,
-                       octets=octets, msgs=msgs)
+def setup_fd_limit():
+    import resource
+    soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
 
 
-class LayeredStreamReaderBase:
-    def __init__(self, upstream):
-        self.upstream = upstream
+def setup_debug():
+    def debug_signal(signum, frame):
+        import pdb
+        pdb.set_trace()
 
-    async def read(self, n):
-        return await self.upstream.read(n)
-
-    async def readexactly(self, n):
-        return await self.upstream.readexactly(n)
+    signal.signal(signal.SIGUSR1, debug_signal)
 
 
-class LayeredStreamWriterBase:
-    def __init__(self, upstream):
-        self.upstream = upstream
-
-    def write(self, data, extra={}):
-        return self.upstream.write(data)
-
-    def write_eof(self):
-        return self.upstream.write_eof()
-
-    async def drain(self):
-        return await self.upstream.drain()
-
-    def close(self):
-        return self.upstream.close()
-
-    def abort(self):
-        return self.upstream.transport.abort()
-
-    @property
-    def transport(self):
-        return self.upstream.transport
+class HookAPI:
+    def __init__(self, user_stats, ip_stats):
+        self.user_stats = user_stats
+        self.ip_stats = ip_stats
 
 
 class CryptoWrappedStreamReader(LayeredStreamReaderBase):
@@ -623,18 +469,18 @@ def set_bufsizes(sock, recv_buf, send_buf):
 
 
 async def open_connection_tryer(addr, port, limit, timeout, max_attempts=3):
-    for attempt in range(max_attempts-1):
+    async def attempt():
+        task = asyncio.open_connection(addr, port, limit=limit)
+        reader_tgt, writer_tgt = await asyncio.wait_for(task, timeout=timeout)
+        return reader_tgt, writer_tgt
+
+    for _ in range(max_attempts-1):
         try:
-            task = asyncio.open_connection(addr, port, limit=limit)
-            reader_tgt, writer_tgt = await asyncio.wait_for(task, timeout=timeout)
-            return reader_tgt, writer_tgt
+            return await attempt()
         except (OSError, asyncio.TimeoutError):
             continue
 
-    # the last attempt
-    task = asyncio.open_connection(addr, port, limit=limit)
-    reader_tgt, writer_tgt = await asyncio.wait_for(task, timeout=timeout)
-    return reader_tgt, writer_tgt
+    return await attempt()
 
 
 async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
@@ -878,7 +724,9 @@ async def handle_client(reader_clt, writer_clt):
 
     reader_clt, writer_clt, proto_tag, user, dc_idx, enc_key_and_iv = clt_data
 
-    update_stats(user, connects=1)
+    cl_ip, cl_port = writer_clt.upstream.get_extra_info('peername')[:2]
+
+    await update_stats(user, cl_ip, n_connections=1)
 
     if not USE_MIDDLE_PROXY:
         if FAST_MODE:
@@ -886,7 +734,6 @@ async def handle_client(reader_clt, writer_clt):
         else:
             tg_data = await do_direct_handshake(proto_tag, dc_idx)
     else:
-        cl_ip, cl_port = writer_clt.upstream.get_extra_info('peername')[:2]
         tg_data = await do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port)
 
     if not tg_data:
@@ -933,7 +780,7 @@ async def handle_client(reader_clt, writer_clt):
                     await wr.drain()
                     return
                 else:
-                    update_stats(user, octets=len(data), msgs=1)
+                    await update_stats(user, cl_ip, n_bytes=len(data), n_msgs=1)
                     wr.write(data, extra)
                     await wr.drain()
         except (OSError, asyncio.streams.IncompleteReadError) as e:
@@ -945,9 +792,15 @@ async def handle_client(reader_clt, writer_clt):
     task_tg_to_clt = asyncio.ensure_future(tg_to_clt)
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
 
-    update_stats(user, curr_connects=1)
+    users_diff = SetStat.Diff(added = {user})
+    ips_diff = SetStat.Diff(added = {cl_ip})
+    await update_stats(user, cl_ip, users = users_diff, ips = ips_diff, n_current_connections=1)
+
     await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
-    update_stats(user, curr_connects=-1)
+    
+    users_diff.invert()
+    ips_diff.invert()
+    await update_stats(user, cl_ip, users = users_diff, ips = ips_diff, n_current_connections=-1)
 
     task_tg_to_clt.cancel()
     task_clt_to_tg.cancel()
@@ -965,15 +818,17 @@ async def handle_client_wrapper(reader, writer):
 
 
 async def stats_printer():
-    global stats
+    global user_stats
+
     while True:
         await asyncio.sleep(STATS_PRINT_PERIOD)
 
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
-        for user, stat in stats.items():
-            print("%s: %d connects (%d current), %.2f MB, %d msgs" % (
-                user, stat["connects"], stat["curr_connects"],
-                stat["octets"] / 1000000, stat["msgs"]))
+        for user, stat in user_stats.items():
+            print("%s@(%s): %d connects (%d current), %.2f MB, %d msgs" % (
+                user, ", ".join(stat.ips), stat.n_connections,
+                stat.n_current_connections,
+                stat.n_bytes / 1000000, stat.n_msgs))
         print(flush=True)
 
 
@@ -1135,7 +990,39 @@ def loop_exception_handler(loop, context):
 
 
 def main():
-    init_stats()
+    global user_stats
+    global ip_stats
+
+    if len(sys.argv) < 2:
+        config_path = "./config.py"
+    elif len(sys.argv) == 2:
+        config_path = sys.argv[1]
+    else:
+        print("Usage: mtprotoproxy [path/to/config.py]")
+
+    if not load_config(globals(), config_path):
+        return
+
+    try:
+        setup_uvloop()
+    except:
+        pass
+
+    try:
+        setup_fd_limit()
+    except Exception as exc:
+        print_err("Failed to increase file limit:", exc)
+
+    try:
+        setup_debug()
+    except:
+        pass
+
+    init_ip_info()
+    print_tg_info()
+
+    user_stats = {}
+    ip_stats = {}
 
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
@@ -1143,6 +1030,8 @@ def main():
 
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(loop_exception_handler)
+
+    loop.run_until_complete(INIT_HOOK(HookAPI(user_stats, ip_stats)))
 
     stats_printer_task = asyncio.Task(stats_printer())
     asyncio.ensure_future(stats_printer_task)
@@ -1180,6 +1069,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_ip_info()
-    print_tg_info()
     main()
