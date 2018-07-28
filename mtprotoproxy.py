@@ -82,11 +82,25 @@ async def update_stats(user, ip, **kwargs):
     global user_stats
     global ip_stats
 
-    dict_get_or_else(user_stats, user, UserStats) \
-        .update(**{k: v for k, v in kwargs.items() if k != "users"})
+    ustats = dict_get_or_else(user_stats, user, UserStats)
 
-    dict_get_or_else(ip_stats, user, IPStats) \
-        .update(**{k: v for k, v in kwargs.items() if k != "ips"})
+    ips = kwargs.get("ips")
+    if ips is not None:
+        ips.simplify_for_set(ustats.ips)
+        if ips.is_null():
+            kwargs.pop("ips")
+
+    ustats.update(**{k: v for k, v in kwargs.items() if k != "users"})
+
+    istats = dict_get_or_else(ip_stats, user, IPStats)
+
+    users = kwargs.get("users")
+    if users is not None:
+        users.simplify_for_set(istats.users)
+        if users.is_null():
+            kwargs.pop("users")
+
+    istats.update(**{k: v for k, v in kwargs.items() if k != "ips"})
 
     await STATS_UPDATE_HOOK(user, ip, kwargs)
 
@@ -111,7 +125,8 @@ def setup_debug():
 
 
 class HookAPI:
-    def __init__(self, user_stats, ip_stats):
+    def __init__(self, secrets_by_user, user_stats, ip_stats):
+        self.secrets_by_user = secrets_by_user
         self.user_stats = user_stats
         self.ip_stats = ip_stats
 
@@ -1031,7 +1046,7 @@ def main():
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(loop_exception_handler)
 
-    loop.run_until_complete(INIT_HOOK(HookAPI(user_stats, ip_stats)))
+    loop.run_until_complete(INIT_HOOK(HookAPI(USERS, user_stats, ip_stats)))
 
     stats_printer_task = asyncio.Task(stats_printer())
     asyncio.ensure_future(stats_printer_task)

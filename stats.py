@@ -10,12 +10,19 @@ class SetStat:
     new = set
 
     class Diff:
-        def __init__(self, added = set(), removed = set()):
+        def __init__(self, added=set(), removed=set()):
             self.added = added
             self.removed = removed
 
         def invert(self):
             self.added, self.removed = self.removed, self.added
+
+        def simplify_for_set(self, s):
+            self.added -= s
+            self.removed &= s
+
+        def is_null(self):
+            return len(self.added) + len(self.removed) == 0
 
     @staticmethod
     def apply_diff(s, d):
