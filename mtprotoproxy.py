@@ -1063,7 +1063,7 @@ def init_ip_info():
     TIMEOUT = 5
 
     try:
-        with urllib.request.urlopen('https://v4.ifconfig.co/ip', timeout=TIMEOUT) as f:
+        with urllib.request.urlopen('http://ipv4.myexternalip.com/raw', timeout=TIMEOUT) as f:
             if f.status != 200:
                 raise Exception("Invalid status code")
             my_ip_info["ipv4"] = f.read().decode().strip()
@@ -1072,7 +1072,7 @@ def init_ip_info():
 
     if PREFER_IPV6:
         try:
-            with urllib.request.urlopen('https://v6.ifconfig.co/ip', timeout=TIMEOUT) as f:
+            with urllib.request.urlopen('http://ipv6.myexternalip.com/raw', timeout=TIMEOUT) as f:
                 if f.status != 200:
                     raise Exception("Invalid status code")
                 my_ip_info["ipv6"] = f.read().decode().strip()
