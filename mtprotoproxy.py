@@ -147,6 +147,8 @@ AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
 PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = config.get("FAST_MODE", True)
+# doesn't allow to connect in not-secure mode
+SECURE_ONLY = config.get("SECURE_ONLY", False)
 STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
 PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
 TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 16384)
@@ -586,6 +588,9 @@ async def handle_handshake(reader, writer):
 
         proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS+4]
         if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE, PROTO_TAG_SECURE):
+            continue
+
+        if SECURE_ONLY and proto_tag != PROTO_TAG_SECURE:
             continue
 
         dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
@@ -1097,13 +1102,14 @@ def print_tg_info():
 
     for user, secret in sorted(USERS.items(), key=lambda x: x[0]):
         for ip in ip_addrs:
-            params = {"server": ip, "port": PORT, "secret": secret}
-            params_encodeded = urllib.parse.urlencode(params, safe=':')
-            print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+            if not SECURE_ONLY:
+                params = {"server": ip, "port": PORT, "secret": secret}
+                params_encodeded = urllib.parse.urlencode(params, safe=':')
+                print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
             params = {"server": ip, "port": PORT, "secret": "dd" + secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
-            print("{}: tg://proxy?{} (beta)".format(user, params_encodeded), flush=True)
+            print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
 
 def loop_exception_handler(loop, context):
