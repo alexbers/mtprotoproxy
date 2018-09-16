@@ -157,6 +157,8 @@ CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 10*60)
 CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
 CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5*60)
 TG_CONNECT_TIMEOUT = config.get("TG_CONNECT_TIMEOUT", 10)
+LISTEN_ADDR_IPV4 = config.get("LISTEN_ADDR_IPV4", "0.0.0.0")
+LISTEN_ADDR_IPV6 = config.get("LISTEN_ADDR_IPV6", "::")
 
 TG_DATACENTER_PORT = 443
 
@@ -1159,12 +1161,12 @@ def main():
 
     reuse_port = hasattr(socket, "SO_REUSEPORT")
 
-    task_v4 = asyncio.start_server(handle_client_wrapper, '0.0.0.0', PORT,
+    task_v4 = asyncio.start_server(handle_client_wrapper, LISTEN_ADDR_IPV4, PORT,
                                    limit=TO_TG_BUFSIZE, reuse_port=reuse_port, loop=loop)
     server_v4 = loop.run_until_complete(task_v4)
 
     if socket.has_ipv6:
-        task_v6 = asyncio.start_server(handle_client_wrapper, '::', PORT,
+        task_v6 = asyncio.start_server(handle_client_wrapper, LISTEN_ADDR_IPV6, PORT,
                                        limit=TO_TG_BUFSIZE, reuse_port=reuse_port, loop=loop)
         server_v6 = loop.run_until_complete(task_v6)
 
