@@ -1078,26 +1078,31 @@ def init_ip_info():
     global USE_MIDDLE_PROXY
     global PREFER_IPV6
     global my_ip_info
-    TIMEOUT = 5
 
-    try:
-        with urllib.request.urlopen('http://ipv4.myexternalip.com/raw', timeout=TIMEOUT) as f:
-            if f.status != 200:
-                raise Exception("Invalid status code")
-            my_ip_info["ipv4"] = f.read().decode().strip()
-    except Exception:
-        pass
-
-    if PREFER_IPV6:
+    def get_ip_from_url(url):
+        TIMEOUT = 5
         try:
-            with urllib.request.urlopen('http://ipv6.myexternalip.com/raw', timeout=TIMEOUT) as f:
+            with urllib.request.urlopen(url, timeout=TIMEOUT) as f:
                 if f.status != 200:
                     raise Exception("Invalid status code")
-                my_ip_info["ipv6"] = f.read().decode().strip()
+                return f.read().decode().strip()
         except Exception:
-            PREFER_IPV6 = False
-        else:
+            return None
+
+    IPV4_URL1 = "http://ipv4.myexternalip.com/raw"
+    IPV4_URL2 = "http://ipv4.icanhazip.com/"
+
+    IPV6_URL1 = "http://ipv6.myexternalip.com/raw"
+    IPV6_URL2 = "http://ipv6.icanhazip.com/"
+
+    my_ip_info["ipv4"] = get_ip_from_url(IPV4_URL1) or get_ip_from_url(IPV4_URL2)
+    my_ip_info["ipv6"] = get_ip_from_url(IPV6_URL1) or get_ip_from_url(IPV6_URL2)
+
+    if PREFER_IPV6:
+        if my_ip_info["ipv6"]:
             print_err("IPv6 found, using it for external communication")
+        else:
+            PREFER_IPV6 = False
 
     if USE_MIDDLE_PROXY:
         if ((not PREFER_IPV6 and not my_ip_info["ipv4"]) or
