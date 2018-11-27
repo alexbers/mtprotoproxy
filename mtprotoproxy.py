@@ -14,10 +14,10 @@ import re
 import runpy
 import signal
 
-
 if len(sys.argv) < 2:
     config = runpy.run_module("config")
 elif len(sys.argv) == 2:
+    # launch with own config
     config = runpy.run_path(sys.argv[1])
 else:
     # undocumented way of launching
@@ -33,30 +33,43 @@ USERS = config["USERS"]
 AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
 
 # load advanced settings
+
 # if IPv6 avaliable, use it by default
 PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
+
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = config.get("FAST_MODE", True)
+
 # doesn't allow to connect in not-secure mode
 SECURE_ONLY = config.get("SECURE_ONLY", False)
+
 # delay in seconds between stats printing
 STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
+
 # delay in seconds between middle proxy info updates
 PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
+
 # max socket buffer size to the client direction, the more the faster, but more RAM hungry
 TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 16384)
+
 # max socket buffer size to the telegram servers direction
 TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
+
 # keepalive period for clients in secs
 CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 10*60)
+
 # drop client after this timeout if the handshake fail
 CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
+
 # if client doesn't confirm data for this number of seconds, it is dropped
 CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5*60)
+
 # telegram servers connect timeout in seconds
 TG_CONNECT_TIMEOUT = config.get("TG_CONNECT_TIMEOUT", 10)
+
 # listen address for IPv4
 LISTEN_ADDR_IPV4 = config.get("LISTEN_ADDR_IPV4", "0.0.0.0")
+
 # listen address for IPv6
 LISTEN_ADDR_IPV6 = config.get("LISTEN_ADDR_IPV6", "::")
 
