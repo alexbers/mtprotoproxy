@@ -14,11 +14,137 @@ import re
 import runpy
 import signal
 
-try:
-    import uvloop
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-except ImportError:
-    pass
+
+if len(sys.argv) < 2:
+    config = runpy.run_module("config")
+elif len(sys.argv) == 2:
+    config = runpy.run_path(sys.argv[1])
+else:
+    # undocumented way of launching
+    config = {}
+    config["PORT"] = int(sys.argv[1])
+    secrets = sys.argv[2].split(",")
+    config["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
+    if len(sys.argv) > 3:
+        config["AD_TAG"] = sys.argv[3]
+
+PORT = config["PORT"]
+USERS = config["USERS"]
+AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
+
+# load advanced settings
+# if IPv6 avaliable, use it by default
+PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
+# disables tg->client trafic reencryption, faster but less secure
+FAST_MODE = config.get("FAST_MODE", True)
+# doesn't allow to connect in not-secure mode
+SECURE_ONLY = config.get("SECURE_ONLY", False)
+# delay in seconds between stats printing
+STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
+# delay in seconds between middle proxy info updates
+PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
+# max socket buffer size to the client direction, the more the faster, but more RAM hungry
+TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 16384)
+# max socket buffer size to the telegram servers direction
+TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
+# keepalive period for clients in secs
+CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 10*60)
+# drop client after this timeout if the handshake fail
+CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
+# if client doesn't confirm data for this number of seconds, it is dropped
+CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5*60)
+# telegram servers connect timeout in seconds
+TG_CONNECT_TIMEOUT = config.get("TG_CONNECT_TIMEOUT", 10)
+# listen address for IPv4
+LISTEN_ADDR_IPV4 = config.get("LISTEN_ADDR_IPV4", "0.0.0.0")
+# listen address for IPv6
+LISTEN_ADDR_IPV6 = config.get("LISTEN_ADDR_IPV6", "::")
+
+TG_DATACENTER_PORT = 443
+
+TG_DATACENTERS_V4 = [
+    "149.154.175.50", "149.154.167.51", "149.154.175.100",
+    "149.154.167.91", "149.154.171.5"
+]
+
+TG_DATACENTERS_V6 = [
+    "2001:b28:f23d:f001::a", "2001:67c:04e8:f002::a", "2001:b28:f23d:f003::a",
+    "2001:67c:04e8:f004::a", "2001:b28:f23f:f005::a"
+]
+
+# This list will be updated in the runtime
+TG_MIDDLE_PROXIES_V4 = {
+    1: [("149.154.175.50", 8888)], -1: [("149.154.175.50", 8888)],
+    2: [("149.154.162.38", 80)], -2: [("149.154.162.38", 80)],
+    3: [("149.154.175.100", 8888)], -3: [("149.154.175.100", 8888)],
+    4: [("91.108.4.136", 8888)], -4: [("91.108.4.136", 8888)],
+    5: [("91.108.56.181", 8888)], -5: [("91.108.56.181", 8888)]
+}
+
+TG_MIDDLE_PROXIES_V6 = {
+    1: [("2001:b28:f23d:f001::d", 8888)], -1: [("2001:b28:f23d:f001::d", 8888)],
+    2: [("2001:67c:04e8:f002::d", 80)], -2: [("2001:67c:04e8:f002::d", 80)],
+    3: [("2001:b28:f23d:f003::d", 8888)], -3: [("2001:b28:f23d:f003::d", 8888)],
+    4: [("2001:67c:04e8:f004::d", 8888)], -4: [("2001:67c:04e8:f004::d", 8888)],
+    5: [("2001:b28:f23f:f005::d", 8888)], -5: [("2001:67c:04e8:f004::d", 8888)]
+}
+
+USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
+
+PROXY_SECRET = bytes.fromhex(
+    "c4f9faca9678e6bb48ad6c7e2ce5c0d24430645d554addeb55419e034da62721" +
+    "d046eaab6e52ab14a95a443ecfb3463e79a05a66612adf9caeda8be9a80da698" +
+    "6fb0a6ff387af84d88ef3a6413713e5c3377f6e1a3d47d99f5e0c56eece8f05c" +
+    "54c490b079e31bef82ff0ee8f2b0a32756d249c5f21269816cb7061b265db212"
+)
+
+SKIP_LEN = 8
+PREKEY_LEN = 32
+KEY_LEN = 32
+IV_LEN = 16
+HANDSHAKE_LEN = 64
+PROTO_TAG_POS = 56
+DC_IDX_POS = 60
+
+PROTO_TAG_ABRIDGED = b"\xef\xef\xef\xef"
+PROTO_TAG_INTERMEDIATE = b"\xee\xee\xee\xee"
+PROTO_TAG_SECURE = b"\xdd\xdd\xdd\xdd"
+
+CBC_PADDING = 16
+PADDING_FILLER = b"\x04\x00\x00\x00"
+
+MIN_MSG_LEN = 12
+MAX_MSG_LEN = 2 ** 24
+
+my_ip_info = {"ipv4": None, "ipv6": None}
+
+
+def setup_files_limit():
+    try:
+        import resource
+        soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
+    except (ValueError, OSError):
+        print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
+    except ImportError:
+        pass
+
+
+def setup_debug():
+    if hasattr(signal, 'SIGUSR1'):
+        def debug_signal(signum, frame):
+            import pdb
+            pdb.set_trace()
+
+        signal.signal(signal.SIGUSR1, debug_signal)
+
+
+def try_setup_uvloop():
+    try:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    except ImportError:
+        pass
 
 
 def try_use_cryptography_module():
@@ -109,126 +235,6 @@ except ImportError:
         create_aes_ctr, create_aes_cbc = try_use_pycrypto_or_pycryptodome_module()
     except ImportError:
         create_aes_ctr, create_aes_cbc = use_slow_bundled_cryptography_module()
-
-try:
-    import resource
-    soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
-except (ValueError, OSError):
-    print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
-except ImportError:
-    pass
-
-if hasattr(signal, 'SIGUSR1'):
-    def debug_signal(signum, frame):
-        import pdb
-        pdb.set_trace()
-
-    signal.signal(signal.SIGUSR1, debug_signal)
-
-if len(sys.argv) < 2:
-    config = runpy.run_module("config")
-elif len(sys.argv) == 2:
-    config = runpy.run_path(sys.argv[1])
-else:
-    # undocumented way of launching
-    config = {}
-    config["PORT"] = int(sys.argv[1])
-    secrets = sys.argv[2].split(",")
-    config["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
-    if len(sys.argv) > 3:
-        config["AD_TAG"] = sys.argv[3]
-
-PORT = config["PORT"]
-USERS = config["USERS"]
-AD_TAG = bytes.fromhex(config.get("AD_TAG", ""))
-
-# load advanced settings
-# if IPv6 avaliable, use it by default
-PREFER_IPV6 = config.get("PREFER_IPV6", socket.has_ipv6)
-# disables tg->client trafic reencryption, faster but less secure
-FAST_MODE = config.get("FAST_MODE", True)
-# doesn't allow to connect in not-secure mode
-SECURE_ONLY = config.get("SECURE_ONLY", False)
-# delay in seconds between stats printing
-STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
-# delay in seconds between middle proxy info updates
-PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
-# max socket buffer size to the client direction, the more the faster, but more RAM hungry
-TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", 16384)
-# max socket buffer size to the telegram servers direction
-TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
-# keepalive period for clients in secs
-CLIENT_KEEPALIVE = config.get("CLIENT_KEEPALIVE", 10*60)
-# drop client after this timeout if the handshake fail
-CLIENT_HANDSHAKE_TIMEOUT = config.get("CLIENT_HANDSHAKE_TIMEOUT", 10)
-# if client doesn't confirm data for this number of seconds, it is dropped
-CLIENT_ACK_TIMEOUT = config.get("CLIENT_ACK_TIMEOUT", 5*60)
-# telegram servers connect timeout in seconds
-TG_CONNECT_TIMEOUT = config.get("TG_CONNECT_TIMEOUT", 10)
-# listen address for IPv4
-LISTEN_ADDR_IPV4 = config.get("LISTEN_ADDR_IPV4", "0.0.0.0")
-# listen address for IPv6
-LISTEN_ADDR_IPV6 = config.get("LISTEN_ADDR_IPV6", "::")
-
-TG_DATACENTER_PORT = 443
-
-TG_DATACENTERS_V4 = [
-    "149.154.175.50", "149.154.167.51", "149.154.175.100",
-    "149.154.167.91", "149.154.171.5"
-]
-
-TG_DATACENTERS_V6 = [
-    "2001:b28:f23d:f001::a", "2001:67c:04e8:f002::a", "2001:b28:f23d:f003::a",
-    "2001:67c:04e8:f004::a", "2001:b28:f23f:f005::a"
-]
-
-# This list will be updated in the runtime
-TG_MIDDLE_PROXIES_V4 = {
-    1: [("149.154.175.50", 8888)], -1: [("149.154.175.50", 8888)],
-    2: [("149.154.162.38", 80)], -2: [("149.154.162.38", 80)],
-    3: [("149.154.175.100", 8888)], -3: [("149.154.175.100", 8888)],
-    4: [("91.108.4.136", 8888)], -4: [("91.108.4.136", 8888)],
-    5: [("91.108.56.181", 8888)], -5: [("91.108.56.181", 8888)]
-}
-
-TG_MIDDLE_PROXIES_V6 = {
-    1: [("2001:b28:f23d:f001::d", 8888)], -1: [("2001:b28:f23d:f001::d", 8888)],
-    2: [("2001:67c:04e8:f002::d", 80)], -2: [("2001:67c:04e8:f002::d", 80)],
-    3: [("2001:b28:f23d:f003::d", 8888)], -3: [("2001:b28:f23d:f003::d", 8888)],
-    4: [("2001:67c:04e8:f004::d", 8888)], -4: [("2001:67c:04e8:f004::d", 8888)],
-    5: [("2001:b28:f23f:f005::d", 8888)], -5: [("2001:67c:04e8:f004::d", 8888)]
-}
-
-
-USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
-
-PROXY_SECRET = bytes.fromhex(
-    "c4f9faca9678e6bb48ad6c7e2ce5c0d24430645d554addeb55419e034da62721" +
-    "d046eaab6e52ab14a95a443ecfb3463e79a05a66612adf9caeda8be9a80da698" +
-    "6fb0a6ff387af84d88ef3a6413713e5c3377f6e1a3d47d99f5e0c56eece8f05c" +
-    "54c490b079e31bef82ff0ee8f2b0a32756d249c5f21269816cb7061b265db212"
-)
-
-SKIP_LEN = 8
-PREKEY_LEN = 32
-KEY_LEN = 32
-IV_LEN = 16
-HANDSHAKE_LEN = 64
-PROTO_TAG_POS = 56
-DC_IDX_POS = 60
-
-PROTO_TAG_ABRIDGED = b"\xef\xef\xef\xef"
-PROTO_TAG_INTERMEDIATE = b"\xee\xee\xee\xee"
-PROTO_TAG_SECURE = b"\xdd\xdd\xdd\xdd"
-
-CBC_PADDING = 16
-PADDING_FILLER = b"\x04\x00\x00\x00"
-
-MIN_MSG_LEN = 12
-MAX_MSG_LEN = 2 ** 24
-
-my_ip_info = {"ipv4": None, "ipv6": None}
 
 
 def print_err(*params):
@@ -1159,6 +1165,10 @@ def loop_exception_handler(loop, context):
 
 
 def main():
+    setup_files_limit()
+    setup_debug()
+    try_setup_uvloop()
+
     init_stats()
 
     if sys.platform == "win32":
