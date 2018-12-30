@@ -1022,26 +1022,19 @@ async def update_middle_proxy_info():
 
         HTTP_REQ_TEMPLATE = "\r\n".join(["GET %s HTTP/1.1", "Host: core.telegram.org",
                                          "Connection: close"]) + "\r\n\r\n"
-        try:
-            reader, writer = await asyncio.open_connection(url_data.netloc, SSL_PORT, ssl=True)
-            req = HTTP_REQ_TEMPLATE % urllib.parse.quote(url_data.path)
-            writer.write(req.encode("utf8"))
-            data = await reader.read()
-            writer.close()
+        reader, writer = await asyncio.open_connection(url_data.netloc, SSL_PORT, ssl=True)
+        req = HTTP_REQ_TEMPLATE % urllib.parse.quote(url_data.path)
+        writer.write(req.encode("utf8"))
+        data = await reader.read()
+        writer.close()
 
-            headers, body = data.split(b"\r\n\r\n", 1)
-            return body
-        except Exception:
-            return b""
+        headers, body = data.split(b"\r\n\r\n", 1)
+        return body
 
     async def get_new_proxies(url):
         PROXY_REGEXP = re.compile(r"proxy_for\s+(-?\d+)\s+(.+):(\d+)\s*;")
-
         ans = {}
-        try:
-            body = await make_https_req(url)
-        except Exception:
-            return ans
+        body = await make_https_req(url)
 
         fields = PROXY_REGEXP.findall(body.decode("utf8"))
         if fields:
@@ -1069,16 +1062,16 @@ async def update_middle_proxy_info():
             if not v4_proxies:
                 raise Exception("no proxy data")
             TG_MIDDLE_PROXIES_V4 = v4_proxies
-        except Exception:
-            print_err("Error updating middle proxy list")
+        except Exception as E:
+            print_err("Error updating middle proxy list:", E)
 
         try:
             v6_proxies = await get_new_proxies(PROXY_INFO_ADDR_V6)
             if not v6_proxies:
                 raise Exception("no proxy data (ipv6)")
             TG_MIDDLE_PROXIES_V6 = v6_proxies
-        except Exception:
-            print_err("Error updating middle proxy list for IPv6")
+        except Exception as E:
+            print_err("Error updating middle proxy list for IPv6:", E)
 
         try:
             secret = await make_https_req(PROXY_SECRET_ADDR)
@@ -1087,8 +1080,8 @@ async def update_middle_proxy_info():
             if secret != PROXY_SECRET:
                 PROXY_SECRET = secret
                 print_err("Middle proxy secret updated")
-        except Exception:
-            print_err("Error updating middle proxy secret, using old")
+        except Exception as E:
+            print_err("Error updating middle proxy secret, using old", E)
 
         await asyncio.sleep(PROXY_INFO_UPDATE_PERIOD)
 
