@@ -1108,10 +1108,10 @@ def init_ip_info():
         except Exception:
             return None
 
-    IPV4_URL1 = "http://ipv4.myexternalip.com/raw"
+    IPV4_URL1 = "http://v4.ident.me/)"
     IPV4_URL2 = "http://ipv4.icanhazip.com/"
 
-    IPV6_URL1 = "http://ipv6.myexternalip.com/raw"
+    IPV6_URL1 = "http://v6.ident.me/"
     IPV6_URL2 = "http://ipv6.icanhazip.com/"
 
     my_ip_info["ipv4"] = get_ip_from_url(IPV4_URL1) or get_ip_from_url(IPV4_URL2)
