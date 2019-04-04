@@ -1108,7 +1108,7 @@ def init_ip_info():
         except Exception:
             return None
 
-    IPV4_URL1 = "http://v4.ident.me/)"
+    IPV4_URL1 = "http://v4.ident.me/"
     IPV4_URL2 = "http://ipv4.icanhazip.com/"
 
     IPV6_URL1 = "http://v6.ident.me/"
