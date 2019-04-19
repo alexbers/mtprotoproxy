@@ -43,6 +43,9 @@ FAST_MODE = config.get("FAST_MODE", True)
 # doesn't allow to connect in not-secure mode
 SECURE_ONLY = config.get("SECURE_ONLY", False)
 
+# length of used handshake randoms for active fingerprinting protection
+REPLAY_CHECK_LEN = config.get("REPLAY_CHECK_LEN", 32768)
+
 # delay in seconds between stats printing
 STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
 
@@ -130,7 +133,7 @@ MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
 my_ip_info = {"ipv4": None, "ipv6": None}
-
+used_handshakes = collections.OrderedDict()
 
 def setup_files_limit():
     try:
@@ -601,18 +604,30 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
 
 
 async def handle_handshake(reader, writer):
+    global used_handshakes
+    EMPTY_READ_BUF_SIZE = 4096
+
     handshake = await reader.readexactly(HANDSHAKE_LEN)
+    dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
+    dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
+    enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
+    enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
+
+    if dec_prekey_and_iv in used_handshakes:
+        ip = writer.get_extra_info('peername')[0]
+        print_err("Active fingerprinting detected from %s, freezing it" % ip)
+        while await reader.read(EMPTY_READ_BUF_SIZE):
+            # just consume all the data
+            pass
+
+        return False
 
     for user in USERS:
         secret = bytes.fromhex(USERS[user])
 
-        dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
-        dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
         dec_key = hashlib.sha256(dec_prekey + secret).digest()
         decryptor = create_aes_ctr(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
 
-        enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
-        enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
         enc_key = hashlib.sha256(enc_prekey + secret).digest()
         encryptor = create_aes_ctr(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
@@ -627,11 +642,14 @@ async def handle_handshake(reader, writer):
 
         dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
 
+        while len(used_handshakes) >= REPLAY_CHECK_LEN:
+            used_handshakes.popitem(last=False)
+        used_handshakes[dec_prekey_and_iv] = True
+
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
         return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv
 
-    EMPTY_READ_BUF_SIZE = 4096
     while await reader.read(EMPTY_READ_BUF_SIZE):
         # just consume all the data
         pass
