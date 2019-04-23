@@ -999,9 +999,9 @@ async def handle_client(reader_clt, writer_clt):
                     # protection against replay-based fingerprinting
                     MIN_FIRST_PKT_SIZE = 12
                     if block_short_first_pkt and 0 < len(data) < MIN_FIRST_PKT_SIZE:
-                        print_err("Active fingerprinting detected from %s, dropping it" % cl_ip)
-                        print_err("If this causes problems set BLOCK_SHORT_FIRST_PKT = False "
-                                  "in the config")
+                        # print_err("Active fingerprinting detected from %s, dropping it" % cl_ip)
+                        # print_err("If this causes problems set BLOCK_SHORT_FIRST_PKT = False "
+                        #          "in the config")
 
                         wr.write_eof()
                         await wr.drain()
