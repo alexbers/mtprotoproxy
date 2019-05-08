@@ -56,11 +56,10 @@ STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
 PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
 
 # max socket buffer size to the client direction, the more the faster, but more RAM hungry
-# can be tuple for adaptive case: (low, users_margin, high)
+# can be the tuple (low, users_margin, high) for the adaptive case. If no much users, use high
 TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", (16384, 100, 131072))
 
-# max socket buffer size to the telegram servers direction
-# also can be tuple
+# max socket buffer size to the telegram servers direction, also can be the tuple
 TO_TG_BUFSIZE = config.get("TO_TG_BUFSIZE", 65536)
 
 # keepalive period for clients in secs
