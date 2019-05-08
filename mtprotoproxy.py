@@ -47,7 +47,7 @@ SECURE_ONLY = config.get("SECURE_ONLY", False)
 REPLAY_CHECK_LEN = config.get("REPLAY_CHECK_LEN", 32768)
 
 # block short first packets to even more protect against replay-based fingerprinting
-BLOCK_SHORT_FIRST_PKT = config.get("BLOCK_SHORT_FIRST_PKT", True)
+BLOCK_SHORT_FIRST_PKT = config.get("BLOCK_SHORT_FIRST_PKT", False)
 
 # delay in seconds between stats printing
 STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
