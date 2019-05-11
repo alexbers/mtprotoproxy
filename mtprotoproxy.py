@@ -6,6 +6,7 @@ import urllib.parse
 import urllib.request
 import collections
 import time
+import datetime
 import hashlib
 import random
 import binascii
@@ -55,6 +56,9 @@ STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
 # delay in seconds between middle proxy info updates
 PROXY_INFO_UPDATE_PERIOD = config.get("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
 
+# delay in seconds between time getting, zero means disabled
+GET_TIME_PERIOD = config.get("GET_TIME_PERIOD", 10*60)
+
 # max socket buffer size to the client direction, the more the faster, but more RAM hungry
 # can be the tuple (low, users_margin, high) for the adaptive case. If no much users, use high
 TO_CLT_BUFSIZE = config.get("TO_CLT_BUFSIZE", (16384, 100, 131072))
@@ -79,6 +83,7 @@ LISTEN_ADDR_IPV4 = config.get("LISTEN_ADDR_IPV4", "0.0.0.0")
 
 # listen address for IPv6
 LISTEN_ADDR_IPV6 = config.get("LISTEN_ADDR_IPV6", "::")
+
 
 TG_DATACENTER_PORT = 443
 
@@ -1084,27 +1089,63 @@ async def stats_printer():
         print(flush=True)
 
 
+async def make_https_req(url, host="core.telegram.org"):
+    """ Make request, return resp body and headers. """
+    SSL_PORT = 443
+    url_data = urllib.parse.urlparse(url)
+
+    HTTP_REQ_TEMPLATE = "\r\n".join(["GET %s HTTP/1.1", "Host: %s",
+                                     "Connection: close"]) + "\r\n\r\n"
+    reader, writer = await asyncio.open_connection(url_data.netloc, SSL_PORT, ssl=True)
+    req = HTTP_REQ_TEMPLATE % (urllib.parse.quote(url_data.path), host)
+    writer.write(req.encode("utf8"))
+    data = await reader.read()
+    writer.close()
+
+    headers, body = data.split(b"\r\n\r\n", 1)
+    return headers, body
+
+
+async def get_srv_time():
+    global USE_MIDDLE_PROXY
+    TIME_SYNC_ADDR = "https://core.telegram.org/getProxySecret"
+    MAX_TIME_SKEW = 30
+
+    want_to_reenable_advertising = False
+    while True:
+        try:
+            headers, secret = await make_https_req(TIME_SYNC_ADDR)
+
+            for line in headers.split(b"\r\n"):
+                if not line.startswith(b"Date: "):
+                    continue
+                line = line[len("Date: "):].decode()
+                srv_time = datetime.datetime.strptime(line, "%a, %d %b %Y %H:%M:%S %Z")
+                now_time = datetime.datetime.utcnow()
+                time_diff = (now_time-srv_time).total_seconds()
+                if USE_MIDDLE_PROXY and abs(time_diff) > MAX_TIME_SKEW:
+                    print_err("Time skew detected, please set the clock")
+                    print_err("Server time:", srv_time, "your time:", now_time)
+                    print_err("Disabling advertising to continue serving")
+
+                    USE_MIDDLE_PROXY = False
+                    want_to_reenable_advertising = True
+                elif want_to_reenable_advertising and abs(time_diff) <= MAX_TIME_SKEW:
+                    print_err("Time is ok, reenabling advertising")
+                    USE_MIDDLE_PROXY = True
+                    want_to_reenable_advertising = False
+
+        except Exception as E:
+            print_err("Error getting server time", E)
+
+        await asyncio.sleep(GET_TIME_PERIOD)
+
+
 async def update_middle_proxy_info():
-    async def make_https_req(url):
-        # returns resp body
-        SSL_PORT = 443
-        url_data = urllib.parse.urlparse(url)
-
-        HTTP_REQ_TEMPLATE = "\r\n".join(["GET %s HTTP/1.1", "Host: core.telegram.org",
-                                         "Connection: close"]) + "\r\n\r\n"
-        reader, writer = await asyncio.open_connection(url_data.netloc, SSL_PORT, ssl=True)
-        req = HTTP_REQ_TEMPLATE % urllib.parse.quote(url_data.path)
-        writer.write(req.encode("utf8"))
-        data = await reader.read()
-        writer.close()
-
-        headers, body = data.split(b"\r\n\r\n", 1)
-        return body
-
     async def get_new_proxies(url):
         PROXY_REGEXP = re.compile(r"proxy_for\s+(-?\d+)\s+(.+):(\d+)\s*;")
         ans = {}
-        body = await make_https_req(url)
+        headers, body = await make_https_req(url)
 
         fields = PROXY_REGEXP.findall(body.decode("utf8"))
         if fields:
@@ -1144,7 +1185,7 @@ async def update_middle_proxy_info():
             print_err("Error updating middle proxy list for IPv6:", E)
 
         try:
-            secret = await make_https_req(PROXY_SECRET_ADDR)
+            headers, secret = await make_https_req(PROXY_SECRET_ADDR)
             if not secret:
                 raise Exception("no secret")
             if secret != PROXY_SECRET:
@@ -1260,6 +1301,10 @@ def main():
     if USE_MIDDLE_PROXY:
         middle_proxy_updater_task = asyncio.Task(update_middle_proxy_info())
         asyncio.ensure_future(middle_proxy_updater_task)
+
+        if GET_TIME_PERIOD:
+            time_get_task = asyncio.Task(get_srv_time())
+            asyncio.ensure_future(time_get_task)
 
     reuse_port = hasattr(socket, "SO_REUSEPORT")
 
