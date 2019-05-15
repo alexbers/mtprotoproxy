@@ -44,7 +44,8 @@ FAST_MODE = config.get("FAST_MODE", True)
 # doesn't allow to connect in not-secure mode
 SECURE_ONLY = config.get("SECURE_ONLY", False)
 
-# user limits, the mapping from name to integer limit
+# user tcp connection limits, the mapping from name to the integer limit
+# feel free to multiply it them 5, since one user can make multiple tcp connects
 USER_CONN_LIMITS = config.get("USER_CONN_LIMITS", {})
 
 # length of used handshake randoms for active fingerprinting protection
