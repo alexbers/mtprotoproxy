@@ -44,6 +44,9 @@ FAST_MODE = config.get("FAST_MODE", True)
 # doesn't allow to connect in not-secure mode
 SECURE_ONLY = config.get("SECURE_ONLY", False)
 
+# user limits, the mapping from name to integer limit
+USER_CONN_LIMITS = config.get("USER_CONN_LIMITS", {})
+
 # length of used handshake randoms for active fingerprinting protection
 REPLAY_CHECK_LEN = config.get("REPLAY_CHECK_LEN", 32768)
 
@@ -1058,7 +1061,8 @@ async def handle_client(reader_clt, writer_clt):
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
 
     update_stats(user, curr_connects=1)
-    await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
+    if user not in USER_CONN_LIMITS or stats[user]["curr_connects"] <= USER_CONN_LIMITS[user]:
+        await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
     update_stats(user, curr_connects=-1)
 
     task_tg_to_clt.cancel()
