@@ -1256,6 +1256,9 @@ def print_tg_info():
             params = {"server": ip, "port": PORT, "secret": "dd" + secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
             print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+        if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
+            msg = "The default secret {} is used, this is not recommended".format(secret)
+            print(msg, flush=True)
 
 
 def loop_exception_handler(loop, context):
