@@ -45,8 +45,8 @@ FAST_MODE = config.get("FAST_MODE", True)
 SECURE_ONLY = config.get("SECURE_ONLY", False)
 
 # user tcp connection limits, the mapping from name to the integer limit
-# feel free to multiply it them 5, since one user can make multiple tcp connects
-USER_CONN_LIMITS = config.get("USER_CONN_LIMITS", {})
+# one client can create many tcp connections, up to 8
+USER_MAX_TCP_CONNS = config.get("USER_MAX_TCP_CONNS", {})
 
 # length of used handshake randoms for active fingerprinting protection
 REPLAY_CHECK_LEN = config.get("REPLAY_CHECK_LEN", 32768)
@@ -1062,7 +1062,7 @@ async def handle_client(reader_clt, writer_clt):
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
 
     update_stats(user, curr_connects=1)
-    if user not in USER_CONN_LIMITS or stats[user]["curr_connects"] <= USER_CONN_LIMITS[user]:
+    if user not in USER_MAX_TCP_CONNS or stats[user]["curr_connects"] <= USER_MAX_TCP_CONNS[user]:
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
     update_stats(user, curr_connects=-1)
 
