@@ -51,8 +51,8 @@ USER_MAX_TCP_CONNS = config.get("USER_MAX_TCP_CONNS", {})
 # length of used handshake randoms for active fingerprinting protection
 REPLAY_CHECK_LEN = config.get("REPLAY_CHECK_LEN", 32768)
 
-# block short first packets to even more protect against replay-based fingerprinting
-BLOCK_SHORT_FIRST_PKT = config.get("BLOCK_SHORT_FIRST_PKT", False)
+# block bad first packets to even more protect against replay-based fingerprinting
+BLOCK_IF_FIRST_PKT_BAD = config.get("BLOCK_IF_FIRST_PKT_BAD", True)
 
 # delay in seconds between stats printing
 STATS_PRINT_PERIOD = config.get("STATS_PRINT_PERIOD", 600)
@@ -1020,7 +1020,7 @@ async def handle_client(reader_clt, writer_clt):
         else:
             return
 
-    async def connect_reader_to_writer(rd, wr, user, rd_buf_size, block_short_first_pkt=False):
+    async def connect_reader_to_writer(rd, wr, user, rd_buf_size, block_if_first_pkt_bad=False):
         is_first_pkt = True
         try:
             while True:
@@ -1030,18 +1030,17 @@ async def handle_client(reader_clt, writer_clt):
                 else:
                     extra = {}
 
+                # protection against replay-based fingerprinting
                 if is_first_pkt:
-                    # protection against replay-based fingerprinting
-                    MIN_FIRST_PKT_SIZE = 12
-                    if block_short_first_pkt and 0 < len(data) < MIN_FIRST_PKT_SIZE:
-                        # print_err("Active fingerprinting detected from %s, dropping it" % cl_ip)
-                        # print_err("If this causes problems set BLOCK_SHORT_FIRST_PKT = False "
-                        #          "in the config")
+                    is_first_pkt = False
+
+                    ERR_PKT_DATA = b'l\xfe\xff\xff'
+                    if block_if_first_pkt_bad and data == ERR_PKT_DATA:
+                        print_err("Active fingerprinting detected from %s, dropping it" % cl_ip)
 
                         wr.write_eof()
                         await wr.drain()
                         return
-                    is_first_pkt = False
 
                 if not data:
                     wr.write_eof()
@@ -1056,7 +1055,7 @@ async def handle_client(reader_clt, writer_clt):
             pass
 
     tg_to_clt = connect_reader_to_writer(reader_tg, writer_clt, user, get_to_clt_bufsize(),
-                                         block_short_first_pkt=BLOCK_SHORT_FIRST_PKT)
+                                         block_if_first_pkt_bad=BLOCK_IF_FIRST_PKT_BAD)
     clt_to_tg = connect_reader_to_writer(reader_clt, writer_tg, user, get_to_tg_bufsize())
     task_tg_to_clt = asyncio.ensure_future(tg_to_clt)
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
