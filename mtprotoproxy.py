@@ -48,6 +48,9 @@ SECURE_ONLY = config.get("SECURE_ONLY", False)
 # one client can create many tcp connections, up to 8
 USER_MAX_TCP_CONNS = config.get("USER_MAX_TCP_CONNS", {})
 
+# expiration date for users in format of day/month/year
+USER_EXPIRATION = config.get("USER_EXPIRATION", {})
+
 # length of used handshake randoms for active fingerprinting protection
 REPLAY_CHECK_LEN = config.get("REPLAY_CHECK_LEN", 32768)
 
@@ -1061,7 +1064,7 @@ async def handle_client(reader_clt, writer_clt):
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
 
     update_stats(user, curr_connects=1)
-    if user not in USER_MAX_TCP_CONNS or stats[user]["curr_connects"] <= USER_MAX_TCP_CONNS[user]:
+    if ((user not in USER_MAX_TCP_CONNS or stats[user]["curr_connects"] <= USER_MAX_TCP_CONNS[user]) and (user not in USER_EXPIRATION or datetime.datetime.now() <= datetime.datetime.strptime(USER_EXPIRATION[user],"%d/%m/%Y"))):
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
     update_stats(user, curr_connects=-1)
 
