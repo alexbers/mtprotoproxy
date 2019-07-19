@@ -1350,11 +1350,12 @@ def main():
 
     reuse_port = hasattr(socket, "SO_REUSEPORT")
 
-    task_v4 = asyncio.start_server(handle_client_wrapper, config.LISTEN_ADDR_IPV4, config.PORT,
-                                   limit=get_to_tg_bufsize(), reuse_port=reuse_port, loop=loop)
-    server_v4 = loop.run_until_complete(task_v4)
+    if config.LISTEN_ADDR_IPV4:
+        task_v4 = asyncio.start_server(handle_client_wrapper, config.LISTEN_ADDR_IPV4, config.PORT,
+                                       limit=get_to_tg_bufsize(), reuse_port=reuse_port, loop=loop)
+        server_v4 = loop.run_until_complete(task_v4)
 
-    if socket.has_ipv6:
+    if config.LISTEN_ADDR_IPV6 and socket.has_ipv6:
         task_v6 = asyncio.start_server(handle_client_wrapper, config.LISTEN_ADDR_IPV6, config.PORT,
                                        limit=get_to_tg_bufsize(), reuse_port=reuse_port, loop=loop)
         server_v6 = loop.run_until_complete(task_v6)
@@ -1366,10 +1367,11 @@ def main():
 
     stats_printer_task.cancel()
 
-    server_v4.close()
-    loop.run_until_complete(server_v4.wait_closed())
+    if config.LISTEN_ADDR_IPV4:
+        server_v4.close()
+        loop.run_until_complete(server_v4.wait_closed())
 
-    if socket.has_ipv6:
+    if config.LISTEN_ADDR_IPV6 and socket.has_ipv6:
         server_v6.close()
         loop.run_until_complete(server_v6.wait_closed())
 
