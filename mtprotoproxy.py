@@ -1365,7 +1365,8 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    stats_printer_task.cancel()
+    for task in asyncio.Task.all_tasks():
+        task.cancel()
 
     if config.LISTEN_ADDR_IPV4:
         server_v4.close()
