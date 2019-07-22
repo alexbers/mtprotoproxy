@@ -125,6 +125,9 @@ def init_config():
         expiration = datetime.datetime.strptime(conf_dict["USER_EXPIRATIONS"][user], "%d/%m/%Y")
         conf_dict["USER_EXPIRATIONS"][user] = expiration
 
+    # the data quota for user
+    conf_dict.setdefault("USER_DATA_QUOTA", {})
+
     # length of used handshake randoms for active fingerprinting protection
     conf_dict.setdefault("REPLAY_CHECK_LEN", 32768)
 
@@ -1104,7 +1107,12 @@ async def handle_client(reader_clt, writer_clt):
         datetime.datetime.now() > config.USER_EXPIRATIONS[user]
     )
 
-    if (not tcp_limit_hit) and (not user_expired):
+    user_data_quota_hit = (
+        user in config.USER_DATA_QUOTA and
+        stats[user]["octets"] > config.USER_DATA_QUOTA[user]
+    )
+
+    if (not tcp_limit_hit) and (not user_expired) and (not user_data_quota_hit):
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
 
     update_stats(user, curr_connects=-1)
