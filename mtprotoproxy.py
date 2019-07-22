@@ -770,9 +770,11 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
                                 b"\x47\x45\x54\x20", b"\xee\xee\xee\xee"]
     RESERVED_NONCE_CONTINUES = [b"\x00\x00\x00\x00"]
 
+    global my_ip_info
+
     dc_idx = abs(dc_idx) - 1
 
-    if config.PREFER_IPV6:
+    if my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]):
         if not 0 <= dc_idx < len(TG_DATACENTERS_V6):
             return False
         dc = TG_DATACENTERS_V6[dc_idx]
@@ -870,7 +872,9 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     # pass as consts to simplify code
     RPC_FLAGS = b"\x00\x00\x00\x00"
 
-    use_ipv6_tg = config.PREFER_IPV6
+    global my_ip_info
+
+    use_ipv6_tg = (my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]))
     use_ipv6_clt = (":" in cl_ip)
 
     if use_ipv6_tg:
@@ -925,7 +929,6 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     tg_ip, tg_port = writer_tgt.upstream.get_extra_info('peername')[:2]
     my_ip, my_port = writer_tgt.upstream.get_extra_info('sockname')[:2]
 
-    global my_ip_info
     if not use_ipv6_tg:
         if my_ip_info["ipv4"]:
             # prefer global ip settings to work behind NAT
@@ -1260,15 +1263,11 @@ def init_ip_info():
     my_ip_info["ipv4"] = get_ip_from_url(IPV4_URL1) or get_ip_from_url(IPV4_URL2)
     my_ip_info["ipv6"] = get_ip_from_url(IPV6_URL1) or get_ip_from_url(IPV6_URL2)
 
-    if config.PREFER_IPV6:
-        if my_ip_info["ipv6"]:
-            print_err("IPv6 found, using it for external communication")
-        else:
-            config.PREFER_IPV6 = False
+    if my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]):
+        print_err("IPv6 found, using it for external communication")
 
     if config.USE_MIDDLE_PROXY:
-        if ((not config.PREFER_IPV6 and not my_ip_info["ipv4"]) or
-                (config.PREFER_IPV6 and not my_ip_info["ipv6"])):
+        if not my_ip_info["ipv4"] and not my_ip_info["ipv6"]:
             print_err("Failed to determine your ip, advertising disabled")
             config.USE_MIDDLE_PROXY = False
 
