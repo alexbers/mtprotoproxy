@@ -73,6 +73,7 @@ MAX_MSG_LEN = 2 ** 24
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
+disable_middle_proxy = False
 
 config = {}
 
@@ -1011,7 +1012,9 @@ async def handle_client(reader_clt, writer_clt):
 
     update_stats(user, connects=1)
 
-    if not config.USE_MIDDLE_PROXY:
+    connect_directly = (not config.USE_MIDDLE_PROXY or disable_middle_proxy)
+
+    if connect_directly:
         if config.FAST_MODE:
             tg_data = await do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=enc_key_and_iv)
         else:
@@ -1024,7 +1027,7 @@ async def handle_client(reader_clt, writer_clt):
 
     reader_tg, writer_tg = tg_data
 
-    if not config.USE_MIDDLE_PROXY and config.FAST_MODE:
+    if connect_directly and config.FAST_MODE:
         class FakeEncryptor:
             def encrypt(self, data):
                 return data
@@ -1036,7 +1039,7 @@ async def handle_client(reader_clt, writer_clt):
         reader_tg.decryptor = FakeDecryptor()
         writer_clt.encryptor = FakeEncryptor()
 
-    if config.USE_MIDDLE_PROXY:
+    if not connect_directly:
         if proto_tag == PROTO_TAG_ABRIDGED:
             reader_clt = MTProtoCompactFrameStreamReader(reader_clt)
             writer_clt = MTProtoCompactFrameStreamWriter(writer_clt)
@@ -1155,6 +1158,8 @@ async def get_srv_time():
     TIME_SYNC_ADDR = "https://core.telegram.org/getProxySecret"
     MAX_TIME_SKEW = 30
 
+    global disable_middle_proxy
+
     want_to_reenable_advertising = False
     while True:
         try:
@@ -1166,19 +1171,18 @@ async def get_srv_time():
                 line = line[len("Date: "):].decode()
                 srv_time = datetime.datetime.strptime(line, "%a, %d %b %Y %H:%M:%S %Z")
                 now_time = datetime.datetime.utcnow()
-                time_diff = (now_time-srv_time).total_seconds()
-                if config.USE_MIDDLE_PROXY and abs(time_diff) > MAX_TIME_SKEW:
+                time_skew = (now_time-srv_time).total_seconds() > MAX_TIME_SKEW
+                if time_skew and config.USE_MIDDLE_PROXY and not disable_middle_proxy:
                     print_err("Time skew detected, please set the clock")
                     print_err("Server time:", srv_time, "your time:", now_time)
                     print_err("Disabling advertising to continue serving")
 
-                    config.USE_MIDDLE_PROXY = False
+                    disable_middle_proxy = True
                     want_to_reenable_advertising = True
-                elif want_to_reenable_advertising and abs(time_diff) <= MAX_TIME_SKEW:
+                elif not time_skew and want_to_reenable_advertising:
                     print_err("Time is ok, reenabling advertising")
-                    config.USE_MIDDLE_PROXY = True
+                    disable_middle_proxy = False
                     want_to_reenable_advertising = False
-
         except Exception as E:
             print_err("Error getting server time", E)
 
@@ -1243,6 +1247,7 @@ async def update_middle_proxy_info():
 
 def init_ip_info():
     global my_ip_info
+    global disable_middle_proxy
 
     def get_ip_from_url(url):
         TIMEOUT = 5
@@ -1269,7 +1274,7 @@ def init_ip_info():
     if config.USE_MIDDLE_PROXY:
         if not my_ip_info["ipv4"] and not my_ip_info["ipv6"]:
             print_err("Failed to determine your ip, advertising disabled")
-            config.USE_MIDDLE_PROXY = False
+            disable_middle_proxy = True
 
 
 def print_tg_info():
