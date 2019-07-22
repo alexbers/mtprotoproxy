@@ -4,4 +4,7 @@ services:
     build: .
     restart: unless-stopped
     network_mode: "host"
+    volumes:
+        - ./config.py:/home/tgproxy/config.py
+        - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
 #    mem_limit: 1024m
