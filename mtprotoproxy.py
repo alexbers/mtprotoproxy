@@ -164,6 +164,12 @@ def init_config():
     # listen address for IPv6
     conf_dict.setdefault("LISTEN_ADDR_IPV6", "::")
 
+    # limit data usage for specific user
+    conf_dict.setdefault("DATA_QUOTA", {})
+
+    # terminate all connections as soon as the quota is reached
+    conf_dict.setdefault("AGGRESSIVE_DATA_QUOTA", False)
+
     # allow access to config by attributes
     config = type("config", (dict,), conf_dict)(conf_dict)
 
@@ -1048,8 +1054,14 @@ async def handle_client(reader_clt, writer_clt):
 
     async def connect_reader_to_writer(rd, wr, user, rd_buf_size, block_if_first_pkt_bad=False):
         is_first_pkt = True
+        user_in_quota = user in config.DATA_QUOTA
+        aggressive = config.AGGRESSIVE_DATA_QUOTA
         try:
             while True:
+                if aggressive and user_in_quota and stats[user]["octets"] > config.DATA_QUOTA[user]:
+                    wr.write_eof()
+                    await wr.drain()
+                    return
                 data = await rd.read(rd_buf_size)
                 if isinstance(data, tuple):
                     data, extra = data
@@ -1097,8 +1109,12 @@ async def handle_client(reader_clt, writer_clt):
         user in config.USER_EXPIRATIONS and
         datetime.datetime.now() > config.USER_EXPIRATIONS[user]
     )
+    user_data_quota_reached = (
+        user in config.DATA_QUOTA and
+        stats[user]["octets"] > config.DATA_QUOTA[user]
+    )
 
-    if (not tcp_limit_hit) and (not user_expired):
+    if (not tcp_limit_hit) and (not user_expired) and (not user_data_quota_reached):
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
 
     update_stats(user, curr_connects=-1)
@@ -1119,7 +1135,10 @@ async def handle_client_wrapper(reader, writer):
 
 
 async def stats_printer():
+    import copy
     global stats
+    global config
+    local_conf = copy.deepcopy(config.DATA_QUOTA)
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
 
@@ -1129,6 +1148,22 @@ async def stats_printer():
                 user, stat["connects"], stat["curr_connects"],
                 stat["octets"] / 1000000, stat["msgs"]))
         print(flush=True)
+
+        # edit max quota
+        for user in local_conf:
+            local_conf[user] = config.DATA_QUOTA[user] - stats[user]["octets"]
+        s1 = str(local_conf)
+
+        # save max quota in config.py
+        file = open('config.py', 'r')
+        s = file.read()
+        pattern = re.compile('\nDATA_QUOTA\\s*=\\s*\\{.*?\\}', re.DOTALL)
+        removed_quota = pattern.sub('', s)  # remove the DATA_QUOTA from config
+        file = open('config.py', 'w')
+        file.write(removed_quota)
+        file.write("\nDATA_QUOTA = ")
+        file.write(s1)
+        file.close()
 
 
 async def make_https_req(url, host="core.telegram.org"):
