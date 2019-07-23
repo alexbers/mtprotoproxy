@@ -7,6 +7,8 @@ import urllib.request
 import collections
 import time
 import datetime
+import hmac
+import base64
 import hashlib
 import random
 import binascii
@@ -57,6 +59,7 @@ PREKEY_LEN = 32
 KEY_LEN = 32
 IV_LEN = 16
 HANDSHAKE_LEN = 64
+TLS_HANDSHAKE_LEN = 1 + 2 + 2 + 512
 PROTO_TAG_POS = 56
 DC_IDX_POS = 60
 
@@ -114,6 +117,12 @@ def init_config():
 
     # doesn't allow to connect in not-secure mode
     conf_dict.setdefault("SECURE_ONLY", False)
+
+    # set the tls domain for the proxy, has an influence only on starting message
+    conf_dict.setdefault("TLS_DOMAIN", "google.com")
+
+    # disables the tls mode, actually there are no reasons for this
+    conf_dict.setdefault("DISABLE_TLS", False)
 
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
@@ -371,9 +380,66 @@ class LayeredStreamWriterBase:
     def abort(self):
         return self.upstream.transport.abort()
 
+    def get_extra_info(self, name):
+        return self.upstream.get_extra_info(name)
+
     @property
     def transport(self):
         return self.upstream.transport
+
+
+class FakeTLSStreamReader(LayeredStreamReaderBase):
+    def __init__(self, upstream):
+        self.upstream = upstream
+        self.buf = bytearray()
+
+    async def read(self, n, ignore_buf=False):
+        if self.buf and not ignore_buf:
+            data = self.buf
+            self.buf = bytearray()
+            return data
+
+        while True:
+            tls_rec_type = await self.upstream.readexactly(1)
+            if not tls_rec_type:
+                return b""
+
+            if tls_rec_type not in [b"\x14", b"\x17"]:
+                print_err("BUG: bad tls type %s in FakeTLSStreamReader" % tls_rec_type)
+                return b""
+
+            version = await self.upstream.readexactly(2)
+            if version != b"\x03\x03":
+                print_err("BUG: unknown version %s in FakeTLSStreamReader" % version)
+                return b""
+
+            data_len = int.from_bytes(await self.upstream.readexactly(2), "big")
+            data = await self.upstream.readexactly(data_len)
+            if tls_rec_type == b"\x14":
+                continue
+            return data
+
+    async def readexactly(self, n):
+        while len(self.buf) < n:
+            tls_data = await self.read(1, ignore_buf=True)
+            if not tls_data:
+                return b""
+            self.buf += tls_data
+        data, self.buf = self.buf[:n], self.buf[n:]
+        return bytes(data)
+
+
+class FakeTLSStreamWriter(LayeredStreamWriterBase):
+    def __init__(self, upstream):
+        self.upstream = upstream
+
+    def write(self, data, extra={}):
+        MAX_CHUNK_SIZE = 65535
+        for start in range(0, len(data), MAX_CHUNK_SIZE):
+            end = min(start+MAX_CHUNK_SIZE, len(data))
+            self.upstream.write(b"\x17\x03\x03" + int.to_bytes(end-start, 2, "big"))
+            self.upstream.write(data[start: end])
+        return len(data)
 
 
 class CryptoWrappedStreamReader(LayeredStreamReaderBase):
@@ -672,11 +738,86 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         return self.upstream.write(full_msg)
 
 
+async def handle_pseudo_tls_handshake(handshake, reader, writer):
+    global used_handshakes
+
+    TLS_VERS = b"\x03\x03"
+    TLS_CIPHERSUITE = b"\xc0\x2f"
+    TLS_EXTENSIONS = b"\x00\x12" + b"\xff\x01\x00\x01\x00" + b"\x00\x05\x00\x00"
+    TLS_EXTENSIONS += b"\x00\x10\x00\x05\x00\x03\x02\x68\x32"
+    TLS_CHANGE_CIPHER = b"\x14" + TLS_VERS + b"\x00\x01\x01"
+    TLS_APP_HTTP2_HDR = b"\x17" + TLS_VERS
+
+    DIGEST_LEN = 32
+    DIGEST_POS = 11
+
+    SESSION_ID_LEN_POS = DIGEST_POS + DIGEST_LEN
+    SESSION_ID_POS = SESSION_ID_LEN_POS + 1
+
+    digest = handshake[DIGEST_POS: DIGEST_POS + DIGEST_LEN]
+
+    if digest in used_handshakes:
+        ip = writer.get_extra_info('peername')[0]
+        print_err("Active TLS fingerprinting detected from %s, dropping it" % ip)
+        return False
+
+    sess_id_len = handshake[SESSION_ID_LEN_POS]
+    sess_id = handshake[SESSION_ID_POS: SESSION_ID_POS + sess_id_len]
+
+    for user in config.USERS:
+        secret = bytes.fromhex(config.USERS[user])
+
+        msg = handshake[:DIGEST_POS] + b"\x00"*DIGEST_LEN + handshake[DIGEST_POS+DIGEST_LEN:]
+        computed_digest = hmac.new(secret, msg, digestmod=hashlib.sha256).digest()
+
+        xored_digest = bytes(digest[i] ^ computed_digest[i] for i in range(DIGEST_LEN))
+        digest_good = xored_digest.startswith(b"\x00" * (DIGEST_LEN-4))
+
+        timestamp = int.from_bytes(xored_digest[-4:], "little")
+        if not digest_good:
+            continue
+
+        http_data = bytearray([random.randrange(0, 256) for i in range(random.randrange(1, 256))])
+
+        srv_hello = TLS_VERS + b"\x00"*DIGEST_LEN + bytes([sess_id_len]) + sess_id
+        srv_hello += TLS_CIPHERSUITE + b"\x00" + TLS_EXTENSIONS
+
+        hello_pkt = b"\x16" + TLS_VERS + int.to_bytes(len(srv_hello) + 4, 2, "big")
+        hello_pkt += b"\x02" + int.to_bytes(len(srv_hello), 3, "big") + srv_hello
+        hello_pkt += TLS_CHANGE_CIPHER + TLS_APP_HTTP2_HDR
+        hello_pkt += int.to_bytes(len(http_data), 2, "big") + http_data
+
+        computed_digest = hmac.new(secret, msg=digest+hello_pkt, digestmod=hashlib.sha256).digest()
+        hello_pkt = hello_pkt[:DIGEST_POS] + computed_digest + hello_pkt[DIGEST_POS+DIGEST_LEN:]
+
+        writer.write(hello_pkt)
+        await writer.drain()
+
+        used_handshakes[digest] = True
+
+        reader = FakeTLSStreamReader(reader)
+        writer = FakeTLSStreamWriter(writer)
+        return reader, writer
+
+    return False
+
+
 async def handle_handshake(reader, writer):
     global used_handshakes
+
+    TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
     EMPTY_READ_BUF_SIZE = 4096
 
     handshake = await reader.readexactly(HANDSHAKE_LEN)
+
+    if handshake.startswith(TLS_START_BYTES) and not config.DISABLE_TLS:
+        handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - HANDSHAKE_LEN)
+        tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer)
+        if not tls_handshake_result:
+            return False
+        reader, writer = tls_handshake_result
+        handshake = await reader.readexactly(HANDSHAKE_LEN)
+
     dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
     dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
     enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
@@ -1303,6 +1444,14 @@ def print_tg_info():
             params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
             print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+
+            if not config.DISABLE_TLS:
+                tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
+                tls_secret_base64 = base64.b64encode(tls_secret)
+                params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
+                params_encodeded = urllib.parse.urlencode(params, safe=':')
+                print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
             print(msg, flush=True)
