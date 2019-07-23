@@ -771,7 +771,8 @@ async def open_connection_tryer(addr, port, limit, timeout, max_attempts=3):
 async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
     RESERVED_NONCE_FIRST_CHARS = [b"\xef"]
     RESERVED_NONCE_BEGININGS = [b"\x48\x45\x41\x44", b"\x50\x4F\x53\x54",
-                                b"\x47\x45\x54\x20", b"\xee\xee\xee\xee"]
+                                b"\x47\x45\x54\x20", b"\xee\xee\xee\xee",
+                                b"\xdd\xdd\xdd\xdd"]
     RESERVED_NONCE_CONTINUES = [b"\x00\x00\x00\x00"]
 
     global my_ip_info
