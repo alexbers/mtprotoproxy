@@ -1450,7 +1450,7 @@ def print_tg_info():
                 tls_secret_base64 = base64.b64encode(tls_secret)
                 params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
-                print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+                print("{}: tg://proxy?{} (experimental)".format(user, params_encodeded), flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
