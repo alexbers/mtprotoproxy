@@ -10,4 +10,4 @@ RUN setcap cap_net_bind_service=+ep /usr/bin/python3.7
 USER tgproxy
 
 WORKDIR /home/tgproxy/
-CMD ["./mtprotoproxy.py"]
+CMD ["python3", "mtprotoproxy.py"]
