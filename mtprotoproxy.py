@@ -765,6 +765,12 @@ def set_bufsizes(sock, recv_buf, send_buf):
     try_setsockopt(sock, socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
 
 
+def set_instant_rst(sock):
+    INSTANT_RST = b"\x01\x00\x00\x00\x00\x00\x00\x00"
+    if hasattr(socket, "SO_LINGER"):
+        try_setsockopt(sock, socket.SOL_SOCKET, socket.SO_LINGER, INSTANT_RST)
+
+
 async def handle_pseudo_tls_handshake(handshake, reader, writer):
     global used_handshakes
 
@@ -842,10 +848,7 @@ async def handle_handshake(reader, writer):
         tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer)
 
         if not tls_handshake_result:
-            if hasattr(socket, "SO_LINGER"):
-                INSTANT_RST = b"\x01\x00\x00\x00\x00\x00\x00\x00"
-                try_setsockopt(writer.get_extra_info("socket"),
-                               socket.SOL_SOCKET, socket.SO_LINGER, INSTANT_RST)
+            set_instant_rst(writer.get_extra_info("socket"))
             return False
         reader, writer = tls_handshake_result
         handshake = await reader.readexactly(HANDSHAKE_LEN)
