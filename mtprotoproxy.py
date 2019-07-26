@@ -181,41 +181,6 @@ def init_config():
     config = type("config", (dict,), conf_dict)(conf_dict)
 
 
-def setup_files_limit():
-    try:
-        import resource
-        soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
-        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
-    except (ValueError, OSError):
-        print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
-    except ImportError:
-        pass
-
-
-def setup_signals():
-    if hasattr(signal, 'SIGUSR1'):
-        def debug_signal(signum, frame):
-            import pdb
-            pdb.set_trace()
-
-        signal.signal(signal.SIGUSR1, debug_signal)
-
-    if hasattr(signal, 'SIGUSR2'):
-        def reload_signal(signum, frame):
-            init_config()
-            print("Config reloaded", flush=True, file=sys.stderr)
-
-        signal.signal(signal.SIGUSR2, reload_signal)
-
-
-def try_setup_uvloop():
-    try:
-        import uvloop
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    except ImportError:
-        pass
-
-
 def try_use_cryptography_module():
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
@@ -1463,6 +1428,42 @@ def print_tg_info():
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
             print(msg, flush=True)
+
+
+def setup_files_limit():
+    try:
+        import resource
+        soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
+    except (ValueError, OSError):
+        print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
+    except ImportError:
+        pass
+
+
+def setup_signals():
+    if hasattr(signal, 'SIGUSR1'):
+        def debug_signal(signum, frame):
+            import pdb
+            pdb.set_trace()
+
+        signal.signal(signal.SIGUSR1, debug_signal)
+
+    if hasattr(signal, 'SIGUSR2'):
+        def reload_signal(signum, frame):
+            init_config()
+            print("Config reloaded", flush=True, file=sys.stderr)
+            print_tg_info()
+
+        signal.signal(signal.SIGUSR2, reload_signal)
+
+
+def try_setup_uvloop():
+    try:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    except ImportError:
+        pass
 
 
 def loop_exception_handler(loop, context):
