@@ -116,7 +116,10 @@ def init_config():
     conf_dict.setdefault("FAST_MODE", True)
 
     # doesn't allow to connect in not-secure mode
-    conf_dict.setdefault("SECURE_ONLY", False)
+    conf_dict.setdefault("SECURE_ONLY", True)
+    
+    # doesn't allow to connect in not-tls mode
+    conf_dict.setdefault("TLS_ONLY", True)
 
     # set the tls domain for the proxy, has an influence only on starting message
     conf_dict.setdefault("TLS_DOMAIN", "google.com")
@@ -807,6 +810,9 @@ async def handle_handshake(reader, writer):
     EMPTY_READ_BUF_SIZE = 4096
 
     handshake = await reader.readexactly(HANDSHAKE_LEN)
+    
+    if config.TLS_ONLY and not handshake.startswith(TLS_START_BYTES):
+        return False
 
     if handshake.startswith(TLS_START_BYTES) and not config.DISABLE_TLS:
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - HANDSHAKE_LEN)
@@ -1420,7 +1426,7 @@ def print_tg_info():
 
             if not config.DISABLE_TLS:
                 tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
-                tls_secret_base64 = base64.b64encode(tls_secret)
+                tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
                 params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 print("{}: tg://proxy?{} (experimental)".format(user, params_encodeded), flush=True)
