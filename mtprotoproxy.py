@@ -118,11 +118,11 @@ def init_config():
     # doesn't allow to connect in not-secure mode
     conf_dict.setdefault("SECURE_ONLY", False)
 
+    # allows to connect in tls mode only
+    conf_dict.setdefault("TLS_ONLY", False)
+
     # set the tls domain for the proxy, has an influence only on starting message
     conf_dict.setdefault("TLS_DOMAIN", "google.com")
-
-    # disables the tls mode, actually there are no reasons for this
-    conf_dict.setdefault("DISABLE_TLS", False)
 
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
@@ -808,7 +808,7 @@ async def handle_handshake(reader, writer):
 
     handshake = await reader.readexactly(HANDSHAKE_LEN)
 
-    if handshake.startswith(TLS_START_BYTES) and not config.DISABLE_TLS:
+    if handshake.startswith(TLS_START_BYTES):
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - HANDSHAKE_LEN)
         tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer)
 
@@ -817,6 +817,10 @@ async def handle_handshake(reader, writer):
             return False
         reader, writer = tls_handshake_result
         handshake = await reader.readexactly(HANDSHAKE_LEN)
+    else:
+        if config.TLS_ONLY:
+            set_instant_rst(writer.get_extra_info("socket"))
+            return False
 
     dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
     dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
@@ -1409,21 +1413,21 @@ def print_tg_info():
 
     for user, secret in sorted(config.USERS.items(), key=lambda x: x[0]):
         for ip in ip_addrs:
-            if not config.SECURE_ONLY:
-                params = {"server": ip, "port": config.PORT, "secret": secret}
+            if not config.TLS_ONLY:
+                if not config.SECURE_ONLY:
+                    params = {"server": ip, "port": config.PORT, "secret": secret}
+                    params_encodeded = urllib.parse.urlencode(params, safe=':')
+                    print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+
+                params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
-            params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
+            tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
+            tls_secret_base64 = base64.b64encode(tls_secret)
+            params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
-            print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
-
-            if not config.DISABLE_TLS:
-                tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
-                tls_secret_base64 = base64.b64encode(tls_secret)
-                params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
-                params_encodeded = urllib.parse.urlencode(params, safe=':')
-                print("{}: tg://proxy?{} (experimental)".format(user, params_encodeded), flush=True)
+            print("{}: tg://proxy?{} (experimental)".format(user, params_encodeded), flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)

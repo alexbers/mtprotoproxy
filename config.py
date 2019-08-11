@@ -10,5 +10,9 @@ USERS = {
 # Can be incompatible with very old clients
 SECURE_ONLY = True
 
+# Makes the proxy even more hard to detect
+# Compatible only with the recent clients
+# TLS_ONLY = True
+
 # Tag for advertising, obtainable from @MTProxybot
 # AD_TAG = "3c09c680b76ee91a4c25ad51f742267d"
