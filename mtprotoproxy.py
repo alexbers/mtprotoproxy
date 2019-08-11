@@ -1424,7 +1424,7 @@ def print_tg_info():
                 print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
             tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
-            tls_secret_base64 = base64.b64encode(tls_secret)
+            tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
             params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
             print("{}: tg://proxy?{} (experimental)".format(user, params_encodeded), flush=True)
