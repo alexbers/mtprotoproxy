@@ -127,7 +127,7 @@ def init_config():
     # use masking, can slow down the proxy
     conf_dict.setdefault("MASK", True)
 
-    # the next host to forward bad clients
+    # the next host to forward bad clients, it is better to use IP here
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
 
     # the next host's port to forward bad clients
