@@ -124,6 +124,15 @@ def init_config():
     # set the tls domain for the proxy, has an influence only on starting message
     conf_dict.setdefault("TLS_DOMAIN", "google.com")
 
+    # use masking, can slow down the proxy
+    conf_dict.setdefault("MASK", True)
+
+    # the next host to forward bad clients
+    conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
+
+    # the next host's port to forward bad clients
+    conf_dict.setdefault("MASK_PORT", 443)
+
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
     conf_dict.setdefault("USER_MAX_TCP_CONNS", {})
@@ -736,6 +745,58 @@ def set_instant_rst(sock):
         try_setsockopt(sock, socket.SOL_SOCKET, socket.SO_LINGER, INSTANT_RST)
 
 
+async def handle_bad_client(reader_clt, writer_clt, handshake):
+    BUF_SIZE = 8192
+    CONNECT_TIMEOUT = 5
+
+    set_instant_rst(writer_clt.get_extra_info("socket"))
+    set_bufsizes(writer_clt.get_extra_info("socket"), BUF_SIZE, BUF_SIZE)
+
+    if not config.MASK:
+        while await reader_clt.read(BUF_SIZE):
+            # just consume all the data
+            pass
+        return
+
+    async def connect_reader_to_writer(reader, writer):
+        try:
+            while True:
+                data = await reader.read(BUF_SIZE)
+
+                if not data:
+                    if not writer.transport.is_closing():
+                        writer.write_eof()
+                        await writer.drain()
+                    return
+
+                writer.write(data)
+                await writer.drain()
+        except (OSError, asyncio.streams.IncompleteReadError) as E:
+            pass
+
+    try:
+        task = asyncio.open_connection(config.MASK_HOST, config.MASK_PORT, limit=BUF_SIZE)
+        reader_srv, writer_srv = await asyncio.wait_for(task, timeout=CONNECT_TIMEOUT)
+        writer_srv.write(handshake)
+        await writer_srv.drain()
+    except ConnectionRefusedError as E:
+        return
+    except (OSError, asyncio.TimeoutError) as E:
+        return
+
+    srv_to_clt = connect_reader_to_writer(reader_srv, writer_clt)
+    clt_to_srv = connect_reader_to_writer(reader_clt, writer_srv)
+    task_srv_to_clt = asyncio.ensure_future(srv_to_clt)
+    task_clt_to_srv = asyncio.ensure_future(clt_to_srv)
+
+    await asyncio.wait([task_srv_to_clt, task_clt_to_srv], return_when=asyncio.FIRST_COMPLETED)
+
+    task_srv_to_clt.cancel()
+    task_clt_to_srv.cancel()
+
+    writer_srv.transport.abort()
+
+
 async def handle_pseudo_tls_handshake(handshake, reader, writer):
     global used_handshakes
 
@@ -756,7 +817,7 @@ async def handle_pseudo_tls_handshake(handshake, reader, writer):
 
     if digest in used_handshakes:
         ip = writer.get_extra_info('peername')[0]
-        print_err("Active TLS fingerprinting detected from %s, dropping it" % ip)
+        print_err("Active TLS fingerprinting detected from %s, handling it" % ip)
         return False
 
     sess_id_len = handshake[SESSION_ID_LEN_POS]
@@ -813,13 +874,13 @@ async def handle_handshake(reader, writer):
         tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer)
 
         if not tls_handshake_result:
-            set_instant_rst(writer.get_extra_info("socket"))
+            await handle_bad_client(reader, writer, handshake)
             return False
         reader, writer = tls_handshake_result
         handshake = await reader.readexactly(HANDSHAKE_LEN)
     else:
         if config.TLS_ONLY:
-            set_instant_rst(writer.get_extra_info("socket"))
+            await handle_bad_client(reader, writer, handshake)
             return False
 
     dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
@@ -829,11 +890,8 @@ async def handle_handshake(reader, writer):
 
     if dec_prekey_and_iv in used_handshakes:
         ip = writer.get_extra_info('peername')[0]
-        print_err("Active fingerprinting detected from %s, freezing it" % ip)
-        while await reader.read(EMPTY_READ_BUF_SIZE):
-            # just consume all the data
-            pass
-
+        print_err("Active fingerprinting detected from %s, handling it" % ip)
+        await handle_bad_client(reader, writer, handshake)
         return False
 
     for user in config.USERS:
@@ -864,10 +922,7 @@ async def handle_handshake(reader, writer):
         writer = CryptoWrappedStreamWriter(writer, encryptor)
         return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv
 
-    while await reader.read(EMPTY_READ_BUF_SIZE):
-        # just consume all the data
-        pass
-
+    await handle_bad_client(reader, writer, handshake)
     return False
 
 
