@@ -121,6 +121,9 @@ def init_config():
     # allows to connect in tls mode only
     conf_dict.setdefault("TLS_ONLY", False)
 
+    # support proxy protocol v1/v2 for incoming connections
+    conf_dict.setdefault("PROXY_PROTOCOL", False)
+
     # set the tls domain for the proxy, has an influence only on starting message
     conf_dict.setdefault("TLS_DOMAIN", "google.com")
 
@@ -752,7 +755,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     set_instant_rst(writer_clt.get_extra_info("socket"))
     set_bufsizes(writer_clt.get_extra_info("socket"), BUF_SIZE, BUF_SIZE)
 
-    if not config.MASK:
+    if not config.MASK or handshake is None:
         while await reader_clt.read(BUF_SIZE):
             # just consume all the data
             pass
@@ -861,13 +864,81 @@ async def handle_pseudo_tls_handshake(handshake, reader, writer):
     return False
 
 
+async def handle_proxy_protocol(reader, writer):
+    PROXY_SIGNATURE = b"\x50\x52\x4F\x58\x59\x20"
+    PROXY_TCP4 = b"TCP4"
+    PROXY_TCP6 = b"TCP6"
+    PROXY_UNKNOWN = b"UNKNOWN"
+
+    PROXY2_SIGNATURE = b"\x0d\x0a\x0d\x0a\x00\x0d\x0a\x51\x55\x49\x54\x0a"
+    PROXY2_AF_UNSPEC = 0x0
+    PROXY2_AF_INET = 0x1
+    PROXY2_AF_INET6 = 0x2
+
+    header = await reader.readexactly(16)
+
+    if header.startswith(PROXY2_SIGNATURE):
+        # proxy header v2
+        proxy_ver = header[12]
+        if proxy_ver & 0xf0 != 0x20:
+            return False
+        proxy_len = int.from_bytes(header[14:16], "big")
+        proxy_addr = await reader.readexactly(proxy_len)
+        if proxy_ver == 0x21:
+            proxy_fam = header[13] >> 4
+            if proxy_fam == PROXY2_AF_INET:
+                if proxy_len >= (4 + 2)*2:
+                    src_addr = socket.inet_ntop(socket.AF_INET, proxy_addr[:4])
+                    src_port = int.from_bytes(proxy_addr[8:10], "big")
+                    return b'', (src_addr, src_port)
+            elif proxy_fam == PROXY2_AF_INET6:
+                if proxy_len >= (16 + 2)*2:
+                    src_addr = socket.inet_ntop(socket.AF_INET6, proxy_addr[:16])
+                    src_port = int.from_bytes(proxy_addr[32:34], "big")
+                    return b'', (src_addr, src_port)
+            elif proxy_fam == PROXY2_AF_UNSPEC:
+                return b'', None
+        elif proxy_ver == 0x20:
+            return b'', None
+
+    elif header.startswith(PROXY_SIGNATURE):
+        # proxy header v1
+        if header.find(b"\r\n") < 0:
+            header += await reader.readline()
+        data = header.split(b"\r\n", 1)
+        if len(data) == 2:
+            _, proxy_fam, *proxy_addr = data[0].split(b"\x20")
+            if proxy_fam in (PROXY_TCP4, PROXY_TCP6) and len(proxy_addr) == 4:
+                src_addr = proxy_addr[0].decode('ascii')
+                src_port = proxy_addr[2].decode('ascii')
+                return data[1], (src_addr, src_port)
+            elif proxy_fam == PROXY_UNKNOWN:
+                return data[1], None
+    else:
+        # no proxy header
+        return header, None
+
+    return False
+
+
 async def handle_handshake(reader, writer):
     global used_handshakes
 
     TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
     EMPTY_READ_BUF_SIZE = 4096
 
-    handshake = await reader.readexactly(HANDSHAKE_LEN)
+    if config.PROXY_PROTOCOL:
+        proxy_data = await handle_proxy_protocol(reader, writer)
+        if not proxy_data:
+            # bad proxy header is local error
+            await handle_bad_client(reader, writer, None)
+            return False
+
+        handshake, peer = proxy_data
+        handshake += await reader.readexactly(HANDSHAKE_LEN - len(handshake))
+    else:
+        peer = None
+        handshake = await reader.readexactly(HANDSHAKE_LEN)
 
     if handshake.startswith(TLS_START_BYTES):
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - HANDSHAKE_LEN)
@@ -920,7 +991,7 @@ async def handle_handshake(reader, writer):
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
-        return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv
+        return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv, peer
 
     await handle_bad_client(reader, writer, handshake)
     return False
@@ -1185,7 +1256,9 @@ async def handle_client(reader_clt, writer_clt):
     if not clt_data:
         return
 
-    reader_clt, writer_clt, proto_tag, user, dc_idx, enc_key_and_iv = clt_data
+    reader_clt, writer_clt, proto_tag, user, dc_idx, enc_key_and_iv, peer = clt_data
+    if peer:
+        cl_ip, cl_port = peer
 
     update_stats(user, connects=1)
 
