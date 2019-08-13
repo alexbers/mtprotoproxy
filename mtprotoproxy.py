@@ -371,7 +371,7 @@ class FakeTLSStreamReader(LayeredStreamReaderBase):
         if self.buf and not ignore_buf:
             data = self.buf
             self.buf = bytearray()
-            return data
+            return bytes(data)
 
         while True:
             tls_rec_type = await self.upstream.readexactly(1)
