@@ -100,7 +100,7 @@ def init_config():
 
     conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
-    conf_dict.setdefault("PORT", 3255)
+    conf_dict.setdefault("PORT", 3256)
     conf_dict.setdefault("USERS", {"tg":  "00000000000000000000000000000000"})
     conf_dict["AD_TAG"] = bytes.fromhex(conf_dict.get("AD_TAG", ""))
 
