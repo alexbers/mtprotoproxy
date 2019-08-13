@@ -330,6 +330,7 @@ class LayeredStreamReaderBaseMeta(type):
 
 
 class LayeredStreamReaderBase(metaclass=LayeredStreamReaderBaseMeta):
+    __slots__ = ('upstream', )
 
     def __init__(self, upstream):
         self.upstream = upstream
@@ -342,6 +343,8 @@ class LayeredStreamReaderBase(metaclass=LayeredStreamReaderBaseMeta):
 
 
 class LayeredStreamWriterBase:
+    __slots__ = ('upstream', )
+
     def __init__(self, upstream):
         self.upstream = upstream
 
