@@ -329,7 +329,7 @@ class LayeredStreamReaderBaseMeta(type):
         super().__new__(mcs, name, bases, namespace)
 
 
-class LayeredStreamReaderBase:
+class LayeredStreamReaderBase(metaclass=LayeredStreamReaderBaseMeta):
 
     def __init__(self, upstream):
         self.upstream = upstream
