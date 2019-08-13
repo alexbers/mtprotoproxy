@@ -196,6 +196,8 @@ def try_use_cryptography_module():
 
     def create_aes_ctr(key, iv):
         class EncryptorAdapter:
+            __slots__ = ('encryptor', 'decryptor')
+
             def __init__(self, cipher):
                 self.encryptor = cipher.encryptor()
                 self.decryptor = cipher.decryptor()
@@ -212,6 +214,8 @@ def try_use_cryptography_module():
 
     def create_aes_cbc(key, iv):
         class EncryptorAdapter:
+            __slots__ = ('encryptor', 'decryptor')
+
             def __init__(self, cipher):
                 self.encryptor = cipher.encryptor()
                 self.decryptor = cipher.decryptor()
@@ -255,6 +259,8 @@ def use_slow_bundled_cryptography_module():
 
     def create_aes_cbc(key, iv):
         class EncryptorAdapter:
+            __slots__ = ('mode', )
+
             def __init__(self, mode):
                 self.mode = mode
 
@@ -325,6 +331,8 @@ def get_to_clt_bufsize():
 
 
 class LayeredStreamReaderBase:
+    __slots__ = ("upstream", )
+
     def __init__(self, upstream):
         self.upstream = upstream
 
@@ -336,6 +344,8 @@ class LayeredStreamReaderBase:
 
 
 class LayeredStreamWriterBase:
+    __slots__ = ("upstream", )
+
     def __init__(self, upstream):
         self.upstream = upstream
 
@@ -363,6 +373,8 @@ class LayeredStreamWriterBase:
 
 
 class FakeTLSStreamReader(LayeredStreamReaderBase):
+    __slots__ = ('buf', )
+
     def __init__(self, upstream):
         self.upstream = upstream
         self.buf = bytearray()
@@ -404,6 +416,8 @@ class FakeTLSStreamReader(LayeredStreamReaderBase):
 
 
 class FakeTLSStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ()
+
     def __init__(self, upstream):
         self.upstream = upstream
 
@@ -417,6 +431,8 @@ class FakeTLSStreamWriter(LayeredStreamWriterBase):
 
 
 class CryptoWrappedStreamReader(LayeredStreamReaderBase):
+    __slots__ = ('decryptor', 'block_size', 'buf')
+
     def __init__(self, upstream, decryptor, block_size=1):
         self.upstream = upstream
         self.decryptor = decryptor
@@ -453,6 +469,8 @@ class CryptoWrappedStreamReader(LayeredStreamReaderBase):
 
 
 class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ('encryptor', 'block_size')
+
     def __init__(self, upstream, encryptor, block_size=1):
         self.upstream = upstream
         self.encryptor = encryptor
@@ -468,6 +486,8 @@ class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
 
 
 class MTProtoFrameStreamReader(LayeredStreamReaderBase):
+    __slots__ = ('seq_no', )
+
     def __init__(self, upstream, seq_no=0):
         self.upstream = upstream
         self.seq_no = seq_no
@@ -504,6 +524,8 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ('seq_no', )
+
     def __init__(self, upstream, seq_no=0):
         self.upstream = upstream
         self.seq_no = seq_no
@@ -523,6 +545,8 @@ class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
 
 
 class MTProtoCompactFrameStreamReader(LayeredStreamReaderBase):
+    __slots__ = ()
+
     async def read(self, buf_size):
         msg_len_bytes = await self.upstream.readexactly(1)
         msg_len = int.from_bytes(msg_len_bytes, "little")
@@ -544,6 +568,8 @@ class MTProtoCompactFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ()
+
     def write(self, data, extra={}):
         SMALL_PKT_BORDER = 0x7f
         LARGE_PKT_BORGER = 256 ** 3
@@ -567,6 +593,8 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
 
 
 class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
+    __slots__ = ()
+
     async def read(self, buf_size):
         msg_len_bytes = await self.upstream.readexactly(4)
         msg_len = int.from_bytes(msg_len_bytes, "little")
@@ -581,6 +609,8 @@ class MTProtoIntermediateFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoIntermediateFrameStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ()
+
     def write(self, data, extra={}):
         if extra.get("SIMPLE_ACK"):
             return self.upstream.write(data)
@@ -589,6 +619,8 @@ class MTProtoIntermediateFrameStreamWriter(LayeredStreamWriterBase):
 
 
 class MTProtoSecureIntermediateFrameStreamReader(LayeredStreamReaderBase):
+    __slots__ = ()
+
     async def read(self, buf_size):
         msg_len_bytes = await self.upstream.readexactly(4)
         msg_len = int.from_bytes(msg_len_bytes, "little")
@@ -608,6 +640,8 @@ class MTProtoSecureIntermediateFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoSecureIntermediateFrameStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ()
+
     def write(self, data, extra={}):
         MAX_PADDING_LEN = 4
         if extra.get("SIMPLE_ACK"):
@@ -621,6 +655,8 @@ class MTProtoSecureIntermediateFrameStreamWriter(LayeredStreamWriterBase):
 
 
 class ProxyReqStreamReader(LayeredStreamReaderBase):
+    __slots__ = ()
+
     async def read(self, msg):
         RPC_PROXY_ANS = b"\x0d\xda\x03\x44"
         RPC_CLOSE_EXT = b"\xa2\x34\xb6\x5e"
@@ -648,6 +684,8 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ('remote_ip_port', 'our_ip_port', 'out_conn_id', 'first_flag_byte', 'proto_tag')
+
     def __init__(self, upstream, cl_ip, cl_port, my_ip, my_port, proto_tag):
         self.upstream = upstream
 
