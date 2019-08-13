@@ -145,6 +145,7 @@ class BlockFeeder(object):
     '''The super-class for objects to handle chunking a stream of bytes
        into the appropriate block size for the underlying mode of operation
        and applying (or stripping) padding, as necessary.'''
+    __slots__ = ('_mode', '_feed', '_final', '_buffer', '_padding')
 
     def __init__(self, mode, feed, final, padding = PADDING_DEFAULT):
         self._mode = mode
@@ -185,6 +186,7 @@ class BlockFeeder(object):
 
 class Encrypter(BlockFeeder):
     'Accepts bytes of plaintext and returns encrypted ciphertext.'
+    __slots__ = ()
 
     def __init__(self, mode, padding = PADDING_DEFAULT):
         BlockFeeder.__init__(self, mode, mode.encrypt, mode._final_encrypt, padding)
@@ -192,6 +194,7 @@ class Encrypter(BlockFeeder):
 
 class Decrypter(BlockFeeder):
     'Accepts bytes of ciphertext and returns decrypted plaintext.'
+    __slots__ = ()
 
     def __init__(self, mode, padding = PADDING_DEFAULT):
         BlockFeeder.__init__(self, mode, mode.decrypt, mode._final_decrypt, padding)

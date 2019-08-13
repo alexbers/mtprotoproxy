@@ -187,6 +187,8 @@ def try_use_cryptography_module():
 
     def create_aes_ctr(key, iv):
         class EncryptorAdapter:
+            __slots__ = ('encryptor', 'decryptor')
+
             def __init__(self, cipher):
                 self.encryptor = cipher.encryptor()
                 self.decryptor = cipher.decryptor()
@@ -203,6 +205,8 @@ def try_use_cryptography_module():
 
     def create_aes_cbc(key, iv):
         class EncryptorAdapter:
+            __slots__ = ('encryptor', 'decryptor')
+
             def __init__(self, cipher):
                 self.encryptor = cipher.encryptor()
                 self.decryptor = cipher.decryptor()
@@ -246,6 +250,8 @@ def use_slow_bundled_cryptography_module():
 
     def create_aes_cbc(key, iv):
         class EncryptorAdapter:
+            __slots__ = ('mode', )
+
             def __init__(self, mode):
                 self.mode = mode
 
@@ -315,7 +321,16 @@ def get_to_clt_bufsize():
     return high if get_curr_connects_count() < margin else low
 
 
+class LayeredStreamReaderBaseMeta(type):
+
+    def __new__(mcs, name, bases, namespace):
+        # Prevent __dict__ creation on class instances if __slots__ is unfilled
+        namespace.setdefault('__slots__', ())
+        super().__new__(mcs, name, bases, namespace)
+
+
 class LayeredStreamReaderBase:
+
     def __init__(self, upstream):
         self.upstream = upstream
 
@@ -354,8 +369,10 @@ class LayeredStreamWriterBase:
 
 
 class FakeTLSStreamReader(LayeredStreamReaderBase):
+    __slots__ = ('buf', )
+
     def __init__(self, upstream):
-        self.upstream = upstream
+        super().__init__(upstream)
         self.buf = bytearray()
 
     async def read(self, n, ignore_buf=False):
@@ -395,8 +412,6 @@ class FakeTLSStreamReader(LayeredStreamReaderBase):
 
 
 class FakeTLSStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream):
-        self.upstream = upstream
 
     def write(self, data, extra={}):
         MAX_CHUNK_SIZE = 65535
@@ -408,7 +423,10 @@ class FakeTLSStreamWriter(LayeredStreamWriterBase):
 
 
 class CryptoWrappedStreamReader(LayeredStreamReaderBase):
+    __slots__ = ('decryptor', 'block_size', 'buf')
+
     def __init__(self, upstream, decryptor, block_size=1):
+        super().__init__(upstream)
         self.upstream = upstream
         self.decryptor = decryptor
         self.block_size = block_size
@@ -444,8 +462,10 @@ class CryptoWrappedStreamReader(LayeredStreamReaderBase):
 
 
 class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ('encryptor', 'block_size', )
+
     def __init__(self, upstream, encryptor, block_size=1):
-        self.upstream = upstream
+        super().__init__(upstream)
         self.encryptor = encryptor
         self.block_size = block_size
 
@@ -459,8 +479,10 @@ class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
 
 
 class MTProtoFrameStreamReader(LayeredStreamReaderBase):
+    __slots__ = ('seq_no', )
+
     def __init__(self, upstream, seq_no=0):
-        self.upstream = upstream
+        super().__init__(upstream)
         self.seq_no = seq_no
 
     async def read(self, buf_size):
@@ -495,8 +517,10 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ('seq_no', )
+
     def __init__(self, upstream, seq_no=0):
-        self.upstream = upstream
+        super().__init__(upstream)
         self.seq_no = seq_no
 
     def write(self, msg, extra={}):
@@ -639,8 +663,10 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
+    __slots__ = ('remote_ip_port', 'our_ip_port', 'proto_tag')
+
     def __init__(self, upstream, cl_ip, cl_port, my_ip, my_port, proto_tag):
-        self.upstream = upstream
+        super().__init__(upstream)
 
         if ":" not in cl_ip:
             self.remote_ip_port = b"\x00" * 10 + b"\xff\xff"
