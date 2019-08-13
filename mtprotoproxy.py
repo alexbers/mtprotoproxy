@@ -908,10 +908,11 @@ async def handle_proxy_protocol(reader, writer):
         data = header.split(b"\r\n", 1)
         if len(data) == 2:
             _, proxy_fam, *proxy_addr = data[0].split(b"\x20")
-            if proxy_fam in (PROXY_TCP4, PROXY_TCP6) and len(proxy_addr) == 4:
-                src_addr = proxy_addr[0].decode('ascii')
-                src_port = proxy_addr[2].decode('ascii')
-                return data[1], (src_addr, src_port)
+            if proxy_fam in (PROXY_TCP4, PROXY_TCP6):
+                if len(proxy_addr) == 4:
+                    src_addr = proxy_addr[0].decode('ascii')
+                    src_port = proxy_addr[2].decode('ascii')
+                    return data[1], (src_addr, src_port)
             elif proxy_fam == PROXY_UNKNOWN:
                 return data[1], None
     else:
