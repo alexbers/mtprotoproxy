@@ -326,7 +326,7 @@ class LayeredStreamReaderBaseMeta(type):
     def __new__(mcs, name, bases, namespace):
         # Prevent __dict__ creation on class instances if __slots__ is unfilled
         namespace.setdefault('__slots__', ())
-        super().__new__(mcs, name, bases, namespace)
+        return super().__new__(mcs, name, bases, namespace)
 
 
 class LayeredStreamReaderBase(metaclass=LayeredStreamReaderBaseMeta):
