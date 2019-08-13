@@ -684,7 +684,7 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    __slots__ = ('remote_ip_port', 'our_ip_port', 'out_conn_id', 'first_flag_byte', 'proto_tag')
+    __slots__ = ('remote_ip_port', 'our_ip_port', 'out_conn_id', 'proto_tag')
 
     def __init__(self, upstream, cl_ip, cl_port, my_ip, my_port, proto_tag):
         self.upstream = upstream
@@ -746,7 +746,6 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         full_msg += bytes([len(config.AD_TAG)]) + config.AD_TAG + FOUR_BYTES_ALIGNER
         full_msg += msg
 
-        self.first_flag_byte = b"\x08"
         return self.upstream.write(full_msg)
 
 
