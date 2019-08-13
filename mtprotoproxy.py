@@ -1478,9 +1478,11 @@ def print_tg_info():
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
 
-            tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
-            tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
-            params = {"server": ip, "port": config.PORT, "secret": tls_secret_base64}
+            tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
+            # the base64 links is buggy on ios
+            # tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
+            # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
+            params = {"server": ip, "port": config.PORT, "secret": tls_secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
             print("{}: tg://proxy?{} (experimental)".format(user, params_encodeded), flush=True)
 
