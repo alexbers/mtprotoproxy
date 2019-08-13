@@ -666,7 +666,7 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    __slots__ = ('remote_ip_port', 'our_ip_port', 'proto_tag')
+    __slots__ = ('remote_ip_port', 'our_ip_port', 'out_conn_id', 'first_flag_byte', 'proto_tag')
 
     def __init__(self, upstream, cl_ip, cl_port, my_ip, my_port, proto_tag):
         super().__init__(upstream)
