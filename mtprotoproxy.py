@@ -864,19 +864,34 @@ async def handle_pseudo_tls_handshake(handshake, reader, writer):
     return False
 
 
-async def handle_proxy_protocol(reader, writer):
-    PROXY_SIGNATURE = b"\x50\x52\x4F\x58\x59\x20"
+async def handle_proxy_protocol(reader):
+    PROXY_SIGNATURE = b"PROXY "
+    PROXY_MIN_LEN = 6
     PROXY_TCP4 = b"TCP4"
     PROXY_TCP6 = b"TCP6"
     PROXY_UNKNOWN = b"UNKNOWN"
 
     PROXY2_SIGNATURE = b"\x0d\x0a\x0d\x0a\x00\x0d\x0a\x51\x55\x49\x54\x0a"
+    PROXY2_MIN_LEN = 16
     PROXY2_AF_UNSPEC = 0x0
     PROXY2_AF_INET = 0x1
     PROXY2_AF_INET6 = 0x2
 
-    header = await reader.readexactly(16)
+    header = await reader.readexactly(PROXY_MIN_LEN)
+    if header.startswith(PROXY_SIGNATURE):
+        # proxy header v1
+        header += await reader.readuntil(b"\r\n")
+        _, proxy_fam, *proxy_addr = header[:-2].split(b" ")
+        if proxy_fam in (PROXY_TCP4, PROXY_TCP6):
+            if len(proxy_addr) == 4:
+                src_addr = proxy_addr[0].decode('ascii')
+                src_port = proxy_addr[2].decode('ascii')
+                return (src_addr, src_port)
+        elif proxy_fam == PROXY_UNKNOWN:
+            return None
+        return False
 
+    header += await reader.readexactly(PROXY2_MIN_LEN - PROXY_MIN_LEN)
     if header.startswith(PROXY2_SIGNATURE):
         # proxy header v2
         proxy_ver = header[12]
@@ -890,34 +905,16 @@ async def handle_proxy_protocol(reader, writer):
                 if proxy_len >= (4 + 2)*2:
                     src_addr = socket.inet_ntop(socket.AF_INET, proxy_addr[:4])
                     src_port = int.from_bytes(proxy_addr[8:10], "big")
-                    return b'', (src_addr, src_port)
+                    return (src_addr, src_port)
             elif proxy_fam == PROXY2_AF_INET6:
                 if proxy_len >= (16 + 2)*2:
                     src_addr = socket.inet_ntop(socket.AF_INET6, proxy_addr[:16])
                     src_port = int.from_bytes(proxy_addr[32:34], "big")
-                    return b'', (src_addr, src_port)
+                    return (src_addr, src_port)
             elif proxy_fam == PROXY2_AF_UNSPEC:
-                return b'', None
+                return None
         elif proxy_ver == 0x20:
-            return b'', None
-
-    elif header.startswith(PROXY_SIGNATURE):
-        # proxy header v1
-        if header.find(b"\r\n") < 0:
-            header += await reader.readline()
-        data = header.split(b"\r\n", 1)
-        if len(data) == 2:
-            _, proxy_fam, *proxy_addr = data[0].split(b"\x20")
-            if proxy_fam in (PROXY_TCP4, PROXY_TCP6):
-                if len(proxy_addr) == 4:
-                    src_addr = proxy_addr[0].decode('ascii')
-                    src_port = proxy_addr[2].decode('ascii')
-                    return data[1], (src_addr, src_port)
-            elif proxy_fam == PROXY_UNKNOWN:
-                return data[1], None
-    else:
-        # no proxy header
-        return header, None
+            return None
 
     return False
 
@@ -929,17 +926,14 @@ async def handle_handshake(reader, writer):
     EMPTY_READ_BUF_SIZE = 4096
 
     if config.PROXY_PROTOCOL:
-        proxy_data = await handle_proxy_protocol(reader, writer)
-        if not proxy_data:
-            # bad proxy header is local error
+        peer = await handle_proxy_protocol(reader)
+        if peer == False:
             await handle_bad_client(reader, writer, None)
             return False
-
-        handshake, peer = proxy_data
-        handshake += await reader.readexactly(HANDSHAKE_LEN - len(handshake))
     else:
         peer = None
-        handshake = await reader.readexactly(HANDSHAKE_LEN)
+
+    handshake = await reader.readexactly(HANDSHAKE_LEN)
 
     if handshake.startswith(TLS_START_BYTES):
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - HANDSHAKE_LEN)
