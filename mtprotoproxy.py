@@ -963,6 +963,7 @@ async def handle_handshake(reader, writer):
     global used_handshakes
 
     TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
+    TLS_START_LEN = len(TLS_START_BYTES)
     EMPTY_READ_BUF_SIZE = 4096
 
     peer = writer.get_extra_info('peername')[:2]
@@ -973,10 +974,10 @@ async def handle_handshake(reader, writer):
             await handle_bad_client(reader, writer, None)
             return False
 
-    handshake = await reader.readexactly(HANDSHAKE_LEN)
+    handshake = await reader.readexactly(TLS_START_LEN)
 
-    if handshake.startswith(TLS_START_BYTES):
-        handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - HANDSHAKE_LEN)
+    if handshake == TLS_START_BYTES:
+        handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - TLS_START_LEN)
         tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer, peer)
 
         if not tls_handshake_result:
@@ -988,6 +989,7 @@ async def handle_handshake(reader, writer):
         if config.TLS_ONLY:
             await handle_bad_client(reader, writer, handshake)
             return False
+        handshake += await reader.readexactly(HANDSHAKE_LEN - TLS_START_LEN)
 
     dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
     dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
