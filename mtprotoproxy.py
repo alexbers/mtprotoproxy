@@ -77,6 +77,7 @@ MAX_MSG_LEN = 2 ** 24
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
 disable_middle_proxy = False
+fake_cert_len = random.randrange(1024, 4096)
 
 config = {}
 
@@ -839,11 +840,10 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
 async def handle_pseudo_tls_handshake(handshake, reader, writer, peer):
     global used_handshakes
+    global fake_cert_len
 
     TLS_VERS = b"\x03\x03"
-    TLS_CIPHERSUITE = b"\xc0\x2f"
-    TLS_EXTENSIONS = b"\x00\x12" + b"\xff\x01\x00\x01\x00" + b"\x00\x05\x00\x00"
-    TLS_EXTENSIONS += b"\x00\x10\x00\x05\x00\x03\x02\x68\x32"
+    TLS_CIPHERSUITE = b"\x13\x01"
     TLS_CHANGE_CIPHER = b"\x14" + TLS_VERS + b"\x00\x01\x01"
     TLS_APP_HTTP2_HDR = b"\x17" + TLS_VERS
 
@@ -852,6 +852,10 @@ async def handle_pseudo_tls_handshake(handshake, reader, writer, peer):
 
     SESSION_ID_LEN_POS = DIGEST_POS + DIGEST_LEN
     SESSION_ID_POS = SESSION_ID_LEN_POS + 1
+
+    tls_extensions = b"\x00\x2e" + b"\x00\x33\x00\x24" + b"\x00\x1d\x00\x20"
+    tls_extensions += bytes([random.randrange(0, 256) for i in range(32)])
+    tls_extensions += b"\x00\x2b\x00\x02\x03\x04"
 
     digest = handshake[DIGEST_POS: DIGEST_POS + DIGEST_LEN]
 
@@ -875,10 +879,10 @@ async def handle_pseudo_tls_handshake(handshake, reader, writer, peer):
         if not digest_good:
             continue
 
-        http_data = bytearray([random.randrange(0, 256) for i in range(random.randrange(1, 256))])
+        http_data = bytearray([random.randrange(0, 256) for i in range(fake_cert_len)])
 
         srv_hello = TLS_VERS + b"\x00"*DIGEST_LEN + bytes([sess_id_len]) + sess_id
-        srv_hello += TLS_CIPHERSUITE + b"\x00" + TLS_EXTENSIONS
+        srv_hello += TLS_CIPHERSUITE + b"\x00" + tls_extensions
 
         hello_pkt = b"\x16" + TLS_VERS + int.to_bytes(len(srv_hello) + 4, 2, "big")
         hello_pkt += b"\x02" + int.to_bytes(len(srv_hello), 3, "big") + srv_hello
