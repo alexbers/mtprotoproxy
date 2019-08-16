@@ -888,7 +888,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         if not is_time_skewed and abs(time.time() - timestamp) > TIME_SKEW_TOLERANCE:
             print_err("Client with time skew detected from %s, can be a replay-attack" % peer[0])
             print_err("The clocks were %d minutes behind" % ((time.time() - timestamp) // 60))
-            continue
+            # continue
 
         http_data = bytearray([random.randrange(0, 256) for i in range(fake_cert_len)])
 
