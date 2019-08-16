@@ -1486,14 +1486,17 @@ def gen_tls_client_hello_msg(server_name):
 
 async def get_encrypted_cert(host, port, server_name):
     async def get_tls_record(reader):
-        record_type = (await reader.readexactly(1))[0]
-        tls_version = await reader.readexactly(2)
-        if tls_version != b"\x03\x03":
-            return 0, b""
-        record_len = int.from_bytes(await reader.readexactly(2), "big")
-        record = await reader.readexactly(record_len)
+        try:
+            record_type = (await reader.readexactly(1))[0]
+            tls_version = await reader.readexactly(2)
+            if tls_version != b"\x03\x03":
+                return 0, b""
+            record_len = int.from_bytes(await reader.readexactly(2), "big")
+            record = await reader.readexactly(record_len)
 
-        return record_type, record
+            return record_type, record
+        except asyncio.IncompleteReadError:
+            return 0, b""
 
     reader, writer = await asyncio.open_connection(host, port)
     writer.write(gen_tls_client_hello_msg(server_name))
@@ -1529,11 +1532,21 @@ async def get_mask_host_cert_len():
 
             task = get_encrypted_cert(config.MASK_HOST, config.MASK_PORT, config.TLS_DOMAIN)
             cert = await asyncio.wait_for(task, timeout=GET_CERT_TIMEOUT)
-            if cert and len(cert) != fake_cert_len:
-                print("TLS cert len updated from %d to %d" % (fake_cert_len, len(cert)), flush=True)
-                fake_cert_len = len(cert)
+            if cert:
+                if len(cert) != fake_cert_len:
+                    fake_cert_len = len(cert)
+            else:
+                print_err("The MASK_HOST %s is not TLS 1.3 host, this is not recommended" %
+                          config.MASK_HOST)
+        except ConnectionRefusedError:
+            print_err("The MASK_HOST %s is refusing connections, this is not recommended" %
+                      config.MASK_HOST)
+        except (TimeoutError, asyncio.TimeoutError):
+            print_err("Got timeout while getting TLS handshake from MASK_HOST %s" %
+                      config.MASK_HOST)
         except Exception as E:
-            pass
+            print_err("Failed to connect to MASK_HOST %s: %s" % (
+                      config.MASK_HOST, E))
 
         await asyncio.sleep(config.GET_CERT_LEN_PERIOD)
 
