@@ -166,6 +166,9 @@ def init_config():
     # delay in seconds between time getting, zero means disabled
     conf_dict.setdefault("GET_TIME_PERIOD", 10*60)
 
+    # delay in seconds between getting the length of certificate on the mask host
+    conf_dict.setdefault("GET_CERT_LEN_PERIOD", random.randrange(4*60*60, 6*60*60))
+
     # max socket buffer size to the client direction, the more the faster, but more RAM hungry
     # can be the tuple (low, users_margin, high) for the adaptive case. If no much users, use high
     conf_dict.setdefault("TO_CLT_BUFSIZE", (16384, 100, 131072))
@@ -1456,6 +1459,85 @@ async def make_https_req(url, host="core.telegram.org"):
     return headers, body
 
 
+def gen_tls_client_hello_msg(server_name):
+    msg = bytearray(b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03")
+    msg += bytes([random.randrange(0, 256) for i in range(32)])
+    msg += b"\x20"
+    msg += bytes([random.randrange(0, 256) for i in range(32)])
+    msg += b"\x00\x22\x4a\x4a\x13\x01\x13\x02\x13\x03\xc0\x2b\xc0\x2f\xc0\x2c\xc0\x30\xcc\xa9"
+    msg += b"\xcc\xa8\xc0\x13\xc0\x14\x00\x9c\x00\x9d\x00\x2f\x00\x35\x00\x0a\x01\x00\x01\x91"
+    msg += b"\xda\xda\x00\x00\x00\x00"
+    msg += int.to_bytes(len(server_name) + 5, 2, "big")
+    msg += int.to_bytes(len(server_name) + 3, 2, "big") + b"\x00"
+    msg += int.to_bytes(len(server_name), 2, "big") + server_name.encode("ascii")
+    msg += b"\x00\x17\x00\x00\xff\x01\x00\x01\x00\x00\x0a\x00\x0a\x00\x08\xaa\xaa\x00\x1d\x00"
+    msg += b"\x17\x00\x18\x00\x0b\x00\x02\x01\x00\x00\x23\x00\x00\x00\x10\x00\x0e\x00\x0c\x02"
+    msg += b"\x68\x32\x08\x68\x74\x74\x70\x2f\x31\x2e\x31\x00\x05\x00\x05\x01\x00\x00\x00\x00"
+    msg += b"\x00\x0d\x00\x14\x00\x12\x04\x03\x08\x04\x04\x01\x05\x03\x08\x05\x05\x01\x08\x06"
+    msg += b"\x06\x01\x01\x01\x00\x12\x00\x00\x00\x33\x00\x2b\x00\x29\xaa\xaa\x00\x01\x00\x00"
+    msg += b"\x1d\x00\x20"
+    msg += bytes([random.randrange(0, 256) for i in range(32)])
+    msg += b"\x00\x2d\x00\x02\x01\x01\x00\x2b\x00\x0b\x0a\xba\xba\x03\x04\x03\x03\x03\x02\x03"
+    msg += b"\x01\x00\x1b\x00\x03\x02\x00\x02\x3a\x3a\x00\x01\x00\x00\x15"
+    msg += int.to_bytes(517 - len(msg) - 2, 2, "big")
+    msg += b"\x00" * (517 - len(msg))
+    return bytes(msg)
+
+
+async def get_encrypted_cert(host, port, server_name):
+    async def get_tls_record(reader):
+        record_type = (await reader.readexactly(1))[0]
+        tls_version = await reader.readexactly(2)
+        if tls_version != b"\x03\x03":
+            return 0, b""
+        record_len = int.from_bytes(await reader.readexactly(2), "big")
+        record = await reader.readexactly(record_len)
+
+        return record_type, record
+
+    reader, writer = await asyncio.open_connection(host, port)
+    writer.write(gen_tls_client_hello_msg(server_name))
+    await writer.drain()
+
+    record1_type, record1 = await get_tls_record(reader)
+    if record1_type != 22:
+        return b""
+
+    record2_type, record2 = await get_tls_record(reader)
+    if record2_type != 20:
+        return b""
+
+    record3_type, record3 = await get_tls_record(reader)
+    if record3_type != 23:
+        return b""
+
+    return record3
+
+
+async def get_mask_host_cert_len():
+    global fake_cert_len
+
+    GET_CERT_TIMEOUT = 10
+    MASK_ENABLING_CHECK_PERIOD = 60
+
+    while True:
+        try:
+            if not config.MASK:
+                # do nothing
+                await asyncio.sleep(MASK_ENABLING_CHECK_PERIOD)
+                continue
+
+            task = get_encrypted_cert(config.MASK_HOST, config.MASK_PORT, config.TLS_DOMAIN)
+            cert = await asyncio.wait_for(task, timeout=GET_CERT_TIMEOUT)
+            if cert and len(cert) != fake_cert_len:
+                print("TLS cert len updated from %d to %d" % (fake_cert_len, len(cert)), flush=True)
+                fake_cert_len = len(cert)
+        except Exception as E:
+            pass
+
+        await asyncio.sleep(config.GET_CERT_LEN_PERIOD)
+
+
 async def get_srv_time():
     TIME_SYNC_ADDR = "https://core.telegram.org/getProxySecret"
     MAX_TIME_SKEW = 30
@@ -1701,6 +1783,9 @@ def main():
         if config.GET_TIME_PERIOD:
             time_get_task = asyncio.Task(get_srv_time())
             asyncio.ensure_future(time_get_task)
+
+    get_cert_len_task = asyncio.Task(get_mask_host_cert_len())
+    asyncio.ensure_future(get_cert_len_task)
 
     reuse_port = hasattr(socket, "SO_REUSEPORT")
 
