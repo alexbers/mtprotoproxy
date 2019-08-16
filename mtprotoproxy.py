@@ -176,7 +176,7 @@ def init_config():
     conf_dict.setdefault("CLIENT_KEEPALIVE", 10*60)
 
     # drop client after this timeout if the handshake fail
-    conf_dict.setdefault("CLIENT_HANDSHAKE_TIMEOUT", 10)
+    conf_dict.setdefault("CLIENT_HANDSHAKE_TIMEOUT", random.randrange(5, 15))
 
     # if client doesn't confirm data for this number of seconds, it is dropped
     conf_dict.setdefault("CLIENT_ACK_TIMEOUT", 5*60)
