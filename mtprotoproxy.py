@@ -838,7 +838,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     writer_srv.transport.abort()
 
 
-async def handle_pseudo_tls_handshake(handshake, reader, writer, peer):
+async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     global used_handshakes
     global fake_cert_len
 
@@ -983,7 +983,7 @@ async def handle_handshake(reader, writer):
 
     if is_tls_handshake:
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - len(handshake))
-        tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer, peer)
+        tls_handshake_result = await handle_fake_tls_handshake(handshake, reader, writer, peer)
 
         if not tls_handshake_result:
             await handle_bad_client(reader, writer, handshake)
