@@ -974,9 +974,14 @@ async def handle_handshake(reader, writer):
             await handle_bad_client(reader, writer, None)
             return False
 
-    handshake = await reader.readexactly(TLS_START_LEN)
+    is_tls_handshake = True
+    handshake = b""
+    for byte_num in range(TLS_START_LEN):
+        handshake += await reader.readexactly(1)
+        if handshake[-1] != TLS_START_BYTES[byte_num]:
+            is_tls_handshake = False
 
-    if handshake == TLS_START_BYTES:
+    if is_tls_handshake:
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - TLS_START_LEN)
         tls_handshake_result = await handle_pseudo_tls_handshake(handshake, reader, writer, peer)
 
