@@ -17,6 +17,7 @@ import re
 import runpy
 import signal
 import os
+import stat
 
 
 TG_DATACENTER_PORT = 443
@@ -1750,9 +1751,8 @@ def try_setup_uvloop():
 
 
 def remove_unix_socket(path):
-    from stat import S_ISSOCK
     try:
-        if S_ISSOCK(os.stat(path).st_mode):
+        if stat.S_ISSOCK(os.stat(path).st_mode):
             os.unlink(path)
     except (FileNotFoundError, NotADirectoryError):
         pass
