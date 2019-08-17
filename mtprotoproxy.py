@@ -430,7 +430,7 @@ class FakeTLSStreamWriter(LayeredStreamWriterBase):
         self.upstream = upstream
 
     def write(self, data, extra={}):
-        MAX_CHUNK_SIZE = 16384
+        MAX_CHUNK_SIZE = 16384 + 24
         for start in range(0, len(data), MAX_CHUNK_SIZE):
             end = min(start+MAX_CHUNK_SIZE, len(data))
             self.upstream.write(b"\x17\x03\x03" + int.to_bytes(end-start, 2, "big"))
