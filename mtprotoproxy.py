@@ -846,7 +846,8 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     global used_handshakes
     global fake_cert_len
 
-    TIME_SKEW_TOLERANCE = 120
+    TIME_SKEW_MIN = -20 * 60
+    TIME_SKEW_MAX = 10 * 60
 
     TLS_VERS = b"\x03\x03"
     TLS_CIPHERSUITE = b"\x13\x01"
@@ -885,10 +886,10 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
             continue
 
         timestamp = int.from_bytes(xored_digest[-4:], "little")
-        if not is_time_skewed and abs(time.time() - timestamp) > TIME_SKEW_TOLERANCE:
+        if not is_time_skewed and not TIME_SKEW_MIN < time.time() - timestamp < TIME_SKEW_MAX:
             print_err("Client with time skew detected from %s, can be a replay-attack" % peer[0])
             print_err("The clocks were %d minutes behind" % ((time.time() - timestamp) // 60))
-            # continue
+            continue
 
         http_data = bytearray([random.randrange(0, 256) for i in range(fake_cert_len)])
 
