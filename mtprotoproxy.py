@@ -125,7 +125,7 @@ def init_config():
     # allows to connect in tls mode only
     conf_dict.setdefault("TLS_ONLY", False)
 
-    # support proxy protocol v1/v2 for incoming connections
+    # accept incoming connections only with proxy protocol v1/v2, use for nginx/haproxy
     conf_dict.setdefault("PROXY_PROTOCOL", False)
 
     # set the tls domain for the proxy, has an influence only on starting message
@@ -1001,14 +1001,16 @@ async def handle_handshake(reader, writer):
 
     TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
 
-    if writer.transport.is_closing() or writer.get_extra_info('peername') is None:
+    if writer.transport.is_closing() or writer.get_extra_info("peername") is None:
         return False
 
-    peer = writer.get_extra_info('peername')[:2]
+    peer = writer.get_extra_info("peername")[:2]
 
     if config.PROXY_PROTOCOL:
+        ip = peer[0]
         peer = await handle_proxy_protocol(reader, peer)
         if not peer:
+            print_err("Client from %s sent bad proxy protocol headers" % ip)
             await handle_bad_client(reader, writer, None)
             return False
 
