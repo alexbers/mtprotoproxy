@@ -1756,7 +1756,7 @@ def print_tg_info():
         print_default_warning = True
 
     if print_default_warning:
-        print("Warning: one or more default settings detected")
+        print_err("Warning: one or more default settings detected")
 
 
 def setup_files_limit():
