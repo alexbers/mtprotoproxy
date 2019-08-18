@@ -125,7 +125,7 @@ def init_config():
     # allows to connect in tls mode only
     conf_dict.setdefault("TLS_ONLY", False)
 
-    # accept incoming connections only with proxy protocol v1/v2, use for nginx/haproxy
+    # accept incoming connections only with proxy protocol v1/v2, useful for nginx and haproxy
     conf_dict.setdefault("PROXY_PROTOCOL", False)
 
     # set the tls domain for the proxy, has an influence only on starting message
