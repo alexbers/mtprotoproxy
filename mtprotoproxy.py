@@ -1746,7 +1746,7 @@ def print_tg_info():
             msg = "The default secret {} is used, this is not recommended".format(secret)
             print(msg, flush=True)
             random_secret = "".join(random.choice("0123456789abcdef") for i in range(32))
-            print("You can use this random secret instead:", random_secret)
+            print("You can use this random secret instead:", random_secret, flush=True)
             print_default_warning = True
 
     if config.TLS_DOMAIN == "www.google.com":
