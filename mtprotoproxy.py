@@ -823,48 +823,49 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
                 writer.write(data)
                 await writer.drain()
-        except (OSError, asyncio.streams.IncompleteReadError) as E:
+        except OSError:
             pass
 
+    writer_srv = None
     try:
         task = asyncio.open_connection(config.MASK_HOST, config.MASK_PORT, limit=BUF_SIZE)
         reader_srv, writer_srv = await asyncio.wait_for(task, timeout=CONNECT_TIMEOUT)
         writer_srv.write(handshake)
         await writer_srv.drain()
+
+        srv_to_clt = connect_reader_to_writer(reader_srv, writer_clt)
+        clt_to_srv = connect_reader_to_writer(reader_clt, writer_srv)
+        task_srv_to_clt = asyncio.ensure_future(srv_to_clt)
+        task_clt_to_srv = asyncio.ensure_future(clt_to_srv)
+
+        await asyncio.wait([task_srv_to_clt, task_clt_to_srv], return_when=asyncio.FIRST_COMPLETED)
+
+        task_srv_to_clt.cancel()
+        task_clt_to_srv.cancel()
+
+        if writer_clt.transport.is_closing():
+            return
+
+        # if the server closed the connection with RST or FIN-RST, copy them to the client
+        if not writer_srv.transport.is_closing():
+            # workaround for uvloop, it doesn't fire exceptions on write_eof
+            sock = writer_srv.get_extra_info('socket')
+            raw_sock = socket.socket(sock.family, sock.type, sock.proto, sock.fileno())
+            try:
+                raw_sock.shutdown(socket.SHUT_WR)
+            except OSError as E:
+                set_instant_rst(writer_clt.get_extra_info("socket"))
+            finally:
+                raw_sock.detach()
+        else:
+            set_instant_rst(writer_clt.get_extra_info("socket"))
     except ConnectionRefusedError as E:
         return
     except (OSError, asyncio.TimeoutError) as E:
         return
-
-    srv_to_clt = connect_reader_to_writer(reader_srv, writer_clt)
-    clt_to_srv = connect_reader_to_writer(reader_clt, writer_srv)
-    task_srv_to_clt = asyncio.ensure_future(srv_to_clt)
-    task_clt_to_srv = asyncio.ensure_future(clt_to_srv)
-
-    await asyncio.wait([task_srv_to_clt, task_clt_to_srv], return_when=asyncio.FIRST_COMPLETED)
-
-    task_srv_to_clt.cancel()
-    task_clt_to_srv.cancel()
-
-    if writer_clt.transport.is_closing():
-        writer_srv.transport.abort()
-        return
-
-    # if the server closed the connection with RST or FIN-RST, copy them to the client
-    if not writer_srv.transport.is_closing():
-        # workaround for uvloop, it doesn't fire exceptions on write_eof
-        srv_sock = writer_srv.get_extra_info('socket')
-        raw_sock = socket.socket(srv_sock.family, srv_sock.type, srv_sock.proto, srv_sock.fileno())
-        try:
-            raw_sock.shutdown(socket.SHUT_WR)
-        except OSError as E:
-            set_instant_rst(writer_clt.get_extra_info("socket"))
-        finally:
-            raw_sock.detach()
-    else:
-        set_instant_rst(writer_clt.get_extra_info("socket"))
-
-    writer_srv.transport.abort()
+    finally:
+        if writer_srv is not None:
+            writer_srv.transport.abort()
 
 
 async def handle_fake_tls_handshake(handshake, reader, writer, peer):
