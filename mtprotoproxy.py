@@ -799,6 +799,9 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     BUF_SIZE = 8192
     CONNECT_TIMEOUT = 5
 
+    if writer_clt.transport.is_closing():
+        return
+
     set_bufsizes(writer_clt.get_extra_info("socket"), BUF_SIZE, BUF_SIZE)
 
     if not config.MASK or handshake is None:
@@ -842,6 +845,10 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
     task_srv_to_clt.cancel()
     task_clt_to_srv.cancel()
+
+    if writer_clt.transport.is_closing():
+        writer_srv.transport.abort()
+        return
 
     # if the server closed the connection with RST or FIN-RST, copy them to the client
     if not writer_srv.transport.is_closing():
@@ -993,7 +1000,9 @@ async def handle_handshake(reader, writer):
     global used_handshakes
 
     TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
-    EMPTY_READ_BUF_SIZE = 4096
+
+    if writer.transport.is_closing() or writer.get_extra_info('peername') is None:
+        return False
 
     peer = writer.get_extra_info('peername')[:2]
 
