@@ -1744,8 +1744,8 @@ def print_tg_info():
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
-            random_secret = "".join(random.choice("0123456789abcdef") for i in range(32))
             print(msg, flush=True)
+            random_secret = "".join(random.choice("0123456789abcdef") for i in range(32))
             print("You can use this random secret instead:", random_secret)
             print_default_warning = True
 
