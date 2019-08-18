@@ -129,9 +129,9 @@ def init_config():
     conf_dict.setdefault("PROXY_PROTOCOL", False)
 
     # set the tls domain for the proxy, has an influence only on starting message
-    conf_dict.setdefault("TLS_DOMAIN", "google.com")
+    conf_dict.setdefault("TLS_DOMAIN", "www.google.com")
 
-    # use masking, can slow down the proxy
+    # enable proxying bad clients to some host
     conf_dict.setdefault("MASK", True)
 
     # the next host to forward bad clients, it is better to use IP here
@@ -1710,6 +1710,14 @@ def init_ip_info():
 def print_tg_info():
     global my_ip_info
 
+    print_default_warning = False
+
+    if config.PORT == 3256:
+        print("The default port 3256 is used, this is not recommended", flush=True)
+        if config.TLS_ONLY:
+            print("Since you have TLS only mode enabled the best port is 443", flush=True)
+        print_default_warning = True
+
     ip_addrs = [ip for ip in my_ip_info.values() if ip]
     if not ip_addrs:
         ip_addrs = ["YOUR_IP"]
@@ -1736,7 +1744,19 @@ def print_tg_info():
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
+            random_secret = "".join(random.choice("0123456789abcdef") for i in range(32))
             print(msg, flush=True)
+            print("You can use this random secret instead:", random_secret)
+            print_default_warning = True
+
+    if config.TLS_DOMAIN == "www.google.com":
+        print("The default TLS_DOMAIN www.google.com is used, this is not recommended", flush=True)
+        msg = "You should use random existing domain instead, bad clients are proxied there"
+        print(msg, flush=True)
+        print_default_warning = True
+
+    if print_default_warning:
+        print("Warning: one or more default settings detected")
 
 
 def setup_files_limit():
