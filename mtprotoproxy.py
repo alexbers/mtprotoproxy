@@ -799,7 +799,6 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     BUF_SIZE = 8192
     CONNECT_TIMEOUT = 5
 
-    set_instant_rst(writer_clt.get_extra_info("socket"))
     set_bufsizes(writer_clt.get_extra_info("socket"), BUF_SIZE, BUF_SIZE)
 
     if not config.MASK or handshake is None:
@@ -843,6 +842,20 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
     task_srv_to_clt.cancel()
     task_clt_to_srv.cancel()
+
+    # if the server closed the connection with RST or FIN-RST, copy them to the client
+    if not writer_srv.transport.is_closing():
+        # workaround for uvloop, it doesn't fire exceptions on write_eof
+        srv_sock = writer_srv.get_extra_info('socket')
+        raw_sock = socket.socket(srv_sock.family, srv_sock.type, srv_sock.proto, srv_sock.fileno())
+        try:
+            raw_sock.shutdown(socket.SHUT_WR)
+        except OSError as E:
+            set_instant_rst(writer_clt.get_extra_info("socket"))
+        finally:
+            raw_sock.detach()
+    else:
+        set_instant_rst(writer_clt.get_extra_info("socket"))
 
     writer_srv.transport.abort()
 
