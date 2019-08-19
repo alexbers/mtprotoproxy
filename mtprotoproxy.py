@@ -343,6 +343,34 @@ def get_to_clt_bufsize():
     return high if get_curr_connects_count() < margin else low
 
 
+class MyRandom(random.Random):
+    def __init__(self):
+        super().__init__()
+        key = bytes([random.randrange(256) for i in range(32)])
+        iv = random.randrange(256**16)
+
+        self.encryptor = create_aes_ctr(key, iv)
+        self.buffer = bytearray()
+
+    def getrandbits(self, k):
+        numbytes = (k + 7) // 8
+        return int.from_bytes(self.getrandbytes(numbytes), 'big') >> (numbytes * 8 - k)
+
+    def getrandbytes(self, n):
+        CHUNK_SIZE = 512
+
+        while n > len(self.buffer):
+            data = int.to_bytes(super().getrandbits(CHUNK_SIZE*8), CHUNK_SIZE, "big")
+            self.buffer += self.encryptor.encrypt(data)
+
+        result = self.buffer[:n]
+        self.buffer = self.buffer[n:]
+        return bytes(result)
+
+
+myrandom = MyRandom()
+
+
 class LayeredStreamReaderBase:
     __slots__ = ("upstream", )
 
@@ -661,8 +689,8 @@ class MTProtoSecureIntermediateFrameStreamWriter(LayeredStreamWriterBase):
             # TODO: make this unpredictable
             return self.upstream.write(data)
         else:
-            padding_len = random.randrange(MAX_PADDING_LEN)
-            padding = bytearray([random.randrange(256) for i in range(padding_len)])
+            padding_len = myrandom.randrange(MAX_PADDING_LEN)
+            padding = myrandom.getrandbytes(padding_len)
             padded_data_len_bytes = int.to_bytes(len(data) + padding_len, 4, 'little')
             return self.upstream.write(padded_data_len_bytes + data + padding)
 
@@ -715,7 +743,7 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         else:
             self.our_ip_port = socket.inet_pton(socket.AF_INET6, my_ip)
         self.our_ip_port += int.to_bytes(my_port, 4, "little")
-        self.out_conn_id = bytearray([random.randrange(0, 256) for i in range(8)])
+        self.out_conn_id = myrandom.getrandbytes(8)
 
         self.proto_tag = proto_tag
 
@@ -798,7 +826,7 @@ def set_instant_rst(sock):
 def gen_x25519_public_key():
     # generates some number which has square root by modulo P
     P = 2**255 - 19
-    n = random.randrange(P)
+    n = myrandom.randrange(P)
     return int.to_bytes((n*n) % P, length=32, byteorder="little")
 
 
@@ -923,7 +951,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
             print_err("The clocks were %d minutes behind" % ((time.time() - timestamp) // 60))
             continue
 
-        http_data = bytearray([random.randrange(0, 256) for i in range(fake_cert_len)])
+        http_data = myrandom.getrandbytes(fake_cert_len)
 
         srv_hello = TLS_VERS + b"\x00"*DIGEST_LEN + bytes([sess_id_len]) + sess_id
         srv_hello += TLS_CIPHERSUITE + b"\x00" + tls_extensions
@@ -1135,7 +1163,7 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
     set_bufsizes(writer_tgt.get_extra_info("socket"), get_to_clt_bufsize(), get_to_tg_bufsize())
 
     while True:
-        rnd = bytearray([random.randrange(0, 256) for i in range(HANDSHAKE_LEN)])
+        rnd = bytearray(myrandom.getrandbytes(HANDSHAKE_LEN))
         if rnd[:1] in RESERVED_NONCE_FIRST_CHARS:
             continue
         if rnd[:4] in RESERVED_NONCE_BEGININGS:
@@ -1218,11 +1246,11 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     if use_ipv6_tg:
         if dc_idx not in TG_MIDDLE_PROXIES_V6:
             return False
-        addr, port = random.choice(TG_MIDDLE_PROXIES_V6[dc_idx])
+        addr, port = myrandom.choice(TG_MIDDLE_PROXIES_V6[dc_idx])
     else:
         if dc_idx not in TG_MIDDLE_PROXIES_V4:
             return False
-        addr, port = random.choice(TG_MIDDLE_PROXIES_V4[dc_idx])
+        addr, port = myrandom.choice(TG_MIDDLE_PROXIES_V4[dc_idx])
 
     try:
         reader_tgt, writer_tgt = await open_connection_tryer(addr, port, limit=get_to_clt_bufsize(),
@@ -1242,7 +1270,7 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     key_selector = PROXY_SECRET[:4]
     crypto_ts = int.to_bytes(int(time.time()) % (256**4), 4, "little")
 
-    nonce = bytes([random.randrange(0, 256) for i in range(NONCE_LEN)])
+    nonce = myrandom.getrandbytes(NONCE_LEN)
 
     msg = RPC_NONCE + key_selector + CRYPTO_AES + crypto_ts + nonce
 
@@ -1497,10 +1525,9 @@ async def make_https_req(url, host="core.telegram.org"):
 
 
 def gen_tls_client_hello_msg(server_name):
-    msg = bytearray(b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03")
-    msg += bytes([random.randrange(0, 256) for i in range(32)])
-    msg += b"\x20"
-    msg += bytes([random.randrange(0, 256) for i in range(32)])
+    msg = bytearray()
+    msg += b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03" + myrandom.getrandbytes(32)
+    msg += b"\x20" + myrandom.getrandbytes(32)
     msg += b"\x00\x22\x4a\x4a\x13\x01\x13\x02\x13\x03\xc0\x2b\xc0\x2f\xc0\x2c\xc0\x30\xcc\xa9"
     msg += b"\xcc\xa8\xc0\x13\xc0\x14\x00\x9c\x00\x9d\x00\x2f\x00\x35\x00\x0a\x01\x00\x01\x91"
     msg += b"\xda\xda\x00\x00\x00\x00"
@@ -1750,7 +1777,7 @@ def print_tg_info():
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
             print(msg, flush=True)
-            random_secret = "".join(random.choice("0123456789abcdef") for i in range(32))
+            random_secret = "".join(myrandom.choice("0123456789abcdef") for i in range(32))
             print("You can change it to this random secret:", random_secret, flush=True)
             print_default_warning = True
 
