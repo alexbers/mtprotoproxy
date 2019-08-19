@@ -1491,6 +1491,12 @@ async def make_https_req(url, host="core.telegram.org"):
 
 
 def gen_tls_client_hello_msg(server_name):
+    def gen_x25519_public_key():
+        # generates some number which has square root by modulo P
+        P = 2**255 - 19
+        n = random.randrange(P)
+        return int.to_bytes((n*n) % P, length=32, byteorder="little")
+
     msg = bytearray(b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03")
     msg += bytes([random.randrange(0, 256) for i in range(32)])
     msg += b"\x20"
@@ -1506,8 +1512,7 @@ def gen_tls_client_hello_msg(server_name):
     msg += b"\x68\x32\x08\x68\x74\x74\x70\x2f\x31\x2e\x31\x00\x05\x00\x05\x01\x00\x00\x00\x00"
     msg += b"\x00\x0d\x00\x14\x00\x12\x04\x03\x08\x04\x04\x01\x05\x03\x08\x05\x05\x01\x08\x06"
     msg += b"\x06\x01\x01\x01\x00\x12\x00\x00\x00\x33\x00\x2b\x00\x29\xaa\xaa\x00\x01\x00\x00"
-    msg += b"\x1d\x00\x20"
-    msg += bytes([random.randrange(0, 256) for i in range(32)])
+    msg += b"\x1d\x00\x20" + gen_x25519_public_key()
     msg += b"\x00\x2d\x00\x02\x01\x01\x00\x2b\x00\x0b\x0a\xba\xba\x03\x04\x03\x03\x03\x02\x03"
     msg += b"\x01\x00\x1b\x00\x03\x02\x00\x02\x3a\x3a\x00\x01\x00\x00\x15"
     msg += int.to_bytes(517 - len(msg) - 2, 2, "big")
