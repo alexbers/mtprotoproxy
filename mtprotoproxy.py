@@ -795,6 +795,13 @@ def set_instant_rst(sock):
         try_setsockopt(sock, socket.SOL_SOCKET, socket.SO_LINGER, INSTANT_RST)
 
 
+def gen_x25519_public_key():
+    # generates some number which has square root by modulo P
+    P = 2**255 - 19
+    n = random.randrange(P)
+    return int.to_bytes((n*n) % P, length=32, byteorder="little")
+
+
 async def handle_bad_client(reader_clt, writer_clt, handshake):
     BUF_SIZE = 8192
     CONNECT_TIMEOUT = 5
@@ -887,8 +894,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     SESSION_ID_POS = SESSION_ID_LEN_POS + 1
 
     tls_extensions = b"\x00\x2e" + b"\x00\x33\x00\x24" + b"\x00\x1d\x00\x20"
-    tls_extensions += bytes([random.randrange(0, 256) for i in range(32)])
-    tls_extensions += b"\x00\x2b\x00\x02\x03\x04"
+    tls_extensions += gen_x25519_public_key() + b"\x00\x2b\x00\x02\x03\x04"
 
     digest = handshake[DIGEST_POS: DIGEST_POS + DIGEST_LEN]
 
@@ -1491,12 +1497,6 @@ async def make_https_req(url, host="core.telegram.org"):
 
 
 def gen_tls_client_hello_msg(server_name):
-    def gen_x25519_public_key():
-        # generates some number which has square root by modulo P
-        P = 2**255 - 19
-        n = random.randrange(P)
-        return int.to_bytes((n*n) % P, length=32, byteorder="little")
-
     msg = bytearray(b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03")
     msg += bytes([random.randrange(0, 256) for i in range(32)])
     msg += b"\x20"
