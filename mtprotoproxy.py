@@ -207,40 +207,27 @@ def try_use_cryptography_module():
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
 
+    class CryptographyEncryptorAdapter:
+        __slots__ = ('encryptor', 'decryptor')
+
+        def __init__(self, cipher):
+            self.encryptor = cipher.encryptor()
+            self.decryptor = cipher.decryptor()
+
+        def encrypt(self, data):
+            return self.encryptor.update(data)
+
+        def decrypt(self, data):
+            return self.decryptor.update(data)
+
     def create_aes_ctr(key, iv):
-        class EncryptorAdapter:
-            __slots__ = ('encryptor', 'decryptor')
-
-            def __init__(self, cipher):
-                self.encryptor = cipher.encryptor()
-                self.decryptor = cipher.decryptor()
-
-            def encrypt(self, data):
-                return self.encryptor.update(data)
-
-            def decrypt(self, data):
-                return self.decryptor.update(data)
-
         iv_bytes = int.to_bytes(iv, 16, "big")
         cipher = Cipher(algorithms.AES(key), modes.CTR(iv_bytes), default_backend())
-        return EncryptorAdapter(cipher)
+        return CryptographyEncryptorAdapter(cipher)
 
     def create_aes_cbc(key, iv):
-        class EncryptorAdapter:
-            __slots__ = ('encryptor', 'decryptor')
-
-            def __init__(self, cipher):
-                self.encryptor = cipher.encryptor()
-                self.decryptor = cipher.decryptor()
-
-            def encrypt(self, data):
-                return self.encryptor.update(data)
-
-            def decrypt(self, data):
-                return self.decryptor.update(data)
-
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), default_backend())
-        return EncryptorAdapter(cipher)
+        return CryptographyEncryptorAdapter(cipher)
 
     return create_aes_ctr, create_aes_cbc
 
@@ -266,27 +253,27 @@ def use_slow_bundled_cryptography_module():
     msg += "pip install cryptography\n"
     print(msg, flush=True, file=sys.stderr)
 
+    class BundledEncryptorAdapter:
+        __slots__ = ('mode', )
+
+        def __init__(self, mode):
+            self.mode = mode
+
+        def encrypt(self, data):
+            encrypter = pyaes.Encrypter(self.mode, pyaes.PADDING_NONE)
+            return encrypter.feed(data) + encrypter.feed()
+
+        def decrypt(self, data):
+            decrypter = pyaes.Decrypter(self.mode, pyaes.PADDING_NONE)
+            return decrypter.feed(data) + decrypter.feed()
+
     def create_aes_ctr(key, iv):
         ctr = pyaes.Counter(iv)
         return pyaes.AESModeOfOperationCTR(key, ctr)
 
     def create_aes_cbc(key, iv):
-        class EncryptorAdapter:
-            __slots__ = ('mode', )
-
-            def __init__(self, mode):
-                self.mode = mode
-
-            def encrypt(self, data):
-                encrypter = pyaes.Encrypter(self.mode, pyaes.PADDING_NONE)
-                return encrypter.feed(data) + encrypter.feed()
-
-            def decrypt(self, data):
-                decrypter = pyaes.Decrypter(self.mode, pyaes.PADDING_NONE)
-                return decrypter.feed(data) + decrypter.feed()
-
         mode = pyaes.AESModeOfOperationCBC(key, iv)
-        return EncryptorAdapter(mode)
+        return BundledEncryptorAdapter(mode)
     return create_aes_ctr, create_aes_cbc
 
 
