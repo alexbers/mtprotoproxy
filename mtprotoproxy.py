@@ -154,7 +154,7 @@ def init_config():
     # the data quota for user
     conf_dict.setdefault("USER_DATA_QUOTA", {})
 
-    # length of used handshake randoms for active fingerprinting protection
+    # length of used handshake randoms for active fingerprinting protection, zero to disable
     conf_dict.setdefault("REPLAY_CHECK_LEN", 32768)
 
     # block bad first packets to even more protect against replay-based fingerprinting
@@ -960,7 +960,10 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         writer.write(hello_pkt)
         await writer.drain()
 
-        used_handshakes[digest] = True
+        if config.REPLAY_CHECK_LEN > 0:
+            while len(used_handshakes) >= config.REPLAY_CHECK_LEN:
+                used_handshakes.popitem(last=False)
+            used_handshakes[digest] = True
 
         reader = FakeTLSStreamReader(reader)
         writer = FakeTLSStreamWriter(writer)
@@ -1095,9 +1098,10 @@ async def handle_handshake(reader, writer):
 
         dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
 
-        while len(used_handshakes) >= config.REPLAY_CHECK_LEN:
-            used_handshakes.popitem(last=False)
-        used_handshakes[dec_prekey_and_iv] = True
+        if config.REPLAY_CHECK_LEN > 0:
+            while len(used_handshakes) >= config.REPLAY_CHECK_LEN:
+                used_handshakes.popitem(last=False)
+            used_handshakes[dec_prekey_and_iv] = True
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
