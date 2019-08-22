@@ -1256,7 +1256,7 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
         print_err("The Telegram server %d (%s %s) is refusing connections" % (dc_idx, addr, port))
         return False
     except (OSError, asyncio.TimeoutError) as E:
-        print_err("Unable to connect to the Telegram server %d (%s %s)", (dc_idx, addr, port))
+        print_err("Unable to connect to the Telegram server %d (%s %s)" % (dc_idx, addr, port))
         return False
 
     set_keepalive(writer_tgt.get_extra_info("socket"))
