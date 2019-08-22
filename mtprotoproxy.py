@@ -1240,10 +1240,6 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     use_ipv6_tg = (my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]))
     use_ipv6_clt = (":" in cl_ip)
 
-    # workaround, the fifth Telegram server doesn't answer on IPv6
-    if abs(dc_idx) == 5:
-        use_ipv6_tg = False
-
     if use_ipv6_tg:
         if dc_idx not in TG_MIDDLE_PROXIES_V6:
             return False
