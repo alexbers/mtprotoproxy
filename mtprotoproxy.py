@@ -1236,6 +1236,10 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     use_ipv6_tg = (my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]))
     use_ipv6_clt = (":" in cl_ip)
 
+    # workaround, the fifth Telegram server doesn't answer on IPv6
+    if abs(dc_idx) == 5:
+        use_ipv6_tg = False
+
     if use_ipv6_tg:
         if dc_idx not in TG_MIDDLE_PROXIES_V6:
             return False
@@ -1249,10 +1253,10 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
         reader_tgt, writer_tgt = await open_connection_tryer(addr, port, limit=get_to_clt_bufsize(),
                                                              timeout=config.TG_CONNECT_TIMEOUT)
     except ConnectionRefusedError as E:
-        print_err("Got connection refused while trying to connect to", addr, port)
+        print_err("The Telegram server %d (%s %s) is refusing connections" % (dc_idx, addr, port))
         return False
     except (OSError, asyncio.TimeoutError) as E:
-        print_err("Unable to connect to", addr, port)
+        print_err("Unable to connect to the Telegram server %d (%s %s)", (dc_idx, addr, port))
         return False
 
     set_keepalive(writer_tgt.get_extra_info("socket"))
