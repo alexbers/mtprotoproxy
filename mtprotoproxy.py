@@ -81,6 +81,7 @@ used_handshakes = collections.OrderedDict()
 disable_middle_proxy = False
 is_time_skewed = False
 fake_cert_len = random.randrange(1024, 4096)
+mask_host_cached_ip = None
 
 config = {}
 
@@ -134,7 +135,7 @@ def init_config():
     # enable proxying bad clients to some host
     conf_dict.setdefault("MASK", True)
 
-    # the next host to forward bad clients, it is better to use IP here
+    # the next host to forward bad clients
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
 
     # the next host's port to forward bad clients
@@ -821,6 +822,8 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     BUF_SIZE = 8192
     CONNECT_TIMEOUT = 5
 
+    global mask_host_cached_ip
+
     if writer_clt.transport.is_closing():
         return
 
@@ -850,8 +853,11 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
     writer_srv = None
     try:
-        task = asyncio.open_connection(config.MASK_HOST, config.MASK_PORT, limit=BUF_SIZE)
+        host = mask_host_cached_ip or config.MASK_HOST
+        task = asyncio.open_connection(host, config.MASK_PORT, limit=BUF_SIZE)
         reader_srv, writer_srv = await asyncio.wait_for(task, timeout=CONNECT_TIMEOUT)
+        if not mask_host_cached_ip:
+            mask_host_cached_ip = writer_srv.get_extra_info("peername")[0]
         writer_srv.write(handshake)
         await writer_srv.drain()
 
@@ -1638,6 +1644,15 @@ async def get_srv_time():
         await asyncio.sleep(config.GET_TIME_PERIOD)
 
 
+async def clear_ip_resolving_cache():
+    global mask_host_cached_ip
+    min_sleep = myrandom.randrange(60 - 10, 60 + 10)
+    max_sleep = myrandom.randrange(120 - 10, 120 + 10)
+    while True:
+        mask_host_cached_ip = None
+        await asyncio.sleep(myrandom.randrange(min_sleep, max_sleep))
+
+
 async def update_middle_proxy_info():
     async def get_new_proxies(url):
         PROXY_REGEXP = re.compile(r"proxy_for\s+(-?\d+)\s+(.+):(\d+)\s*;")
@@ -1877,6 +1892,9 @@ def main():
 
     get_cert_len_task = asyncio.Task(get_mask_host_cert_len())
     asyncio.ensure_future(get_cert_len_task)
+
+    clear_resolving_cache_task = asyncio.Task(clear_ip_resolving_cache())
+    asyncio.ensure_future(clear_resolving_cache_task)
 
     reuse_port = hasattr(socket, "SO_REUSEPORT")
     has_unix = hasattr(socket, "AF_UNIX")
