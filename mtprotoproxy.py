@@ -18,6 +18,7 @@ import runpy
 import signal
 import os
 import stat
+import traceback
 
 
 TG_DATACENTER_PORT = 443
@@ -1490,6 +1491,8 @@ async def handle_client_wrapper(reader, writer):
         await handle_client(reader, writer)
     except (asyncio.IncompleteReadError, ConnectionResetError, TimeoutError):
         pass
+    except:
+        traceback.print_exc()
     finally:
         writer.transport.abort()
 
