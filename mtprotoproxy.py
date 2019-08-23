@@ -1491,7 +1491,7 @@ async def handle_client_wrapper(reader, writer):
         await handle_client(reader, writer)
     except (asyncio.IncompleteReadError, ConnectionResetError, TimeoutError):
         pass
-    except:
+    except Exception:
         traceback.print_exc()
     finally:
         writer.transport.abort()
