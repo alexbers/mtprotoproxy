@@ -940,7 +940,9 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
 
         timestamp = int.from_bytes(xored_digest[-4:], "little")
         client_time_is_ok = TIME_SKEW_MIN < time.time() - timestamp < TIME_SKEW_MAX
-        if not client_time_is_ok and not is_time_skewed and timestamp != 0:
+        # some clients fail to read unix time and send the time since boot instead
+        client_time_is_small = timestamp < 60*60*24*1000
+        if not client_time_is_ok and not is_time_skewed and not client_time_is_small:
             print_err("Client with time skew detected from %s, can be a replay-attack" % peer[0])
             print_err("The clocks were %d minutes behind" % ((time.time() - timestamp) // 60))
             continue
