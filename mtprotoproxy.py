@@ -948,8 +948,9 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         # some clients fail to read unix time and send the time since boot instead
         client_time_is_small = timestamp < 60*60*24*1000
         if not client_time_is_ok and not is_time_skewed and not client_time_is_small:
-            print_err("Client with time skew detected from %s, can be a replay-attack" % peer[0])
-            print_err("The clocks were %d minutes behind" % ((time.time() - timestamp) // 60))
+            err_msg = "Client with time skew detected from %s, can be a replay-attack. " % peer[0]
+            err_msg += "Its clocks were %d minutes behind" % ((time.time() - timestamp) // 60)
+            print_err(err_msg)
             continue
 
         http_data = myrandom.getrandbytes(fake_cert_len)
