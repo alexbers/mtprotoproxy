@@ -4,14 +4,13 @@ Fast and simple to setup mtproto proxy.
 
 ## Starting Up ##
     
-1. `git clone -b stable https://github.com/alexbers/mtprotoproxy.git; cd mtprotoproxy`
-2. *(optional, recommended)* edit *config.py*, set **PORT**, **USERS** and **AD_TAG**
-3. `docker-compose up --build -d` (or just `python3 mtprotoproxy.py` if you don't like docker)
-4. *(optional, shows telegram link to set the proxy)* `docker-compose logs`
+1. *(optional, recommended)* `pip install uvloop`
+2. `pip install mtprotoproxy`
+3. `mtprotoproxy <port> <secret> [ad_tag] [tls_domain]`. Example: `mtprotoproxy 443 d14c0fb43d4bb5be3184037560fb146c 3c09c680b76ee91a4c25ad51f742267d google.com`
 
 ## Channel Advertising ##
 
-To advertise a channel get a tag from **@MTProxybot** and write it to *config.py*.
+To advertise a channel get a tag from **@MTProxybot**.
 
 ## Performance ##
 
@@ -23,5 +22,3 @@ the VDS instance with 1 CPU core and 1024MB RAM.
 The proxy can be launched:
 - with a custom config: `python3 mtprotoproxy.py [configfile]`
 - several times, clients will be automaticaly balanced between instances
-- using *PyPy* interprteter
-- with runtime statistics exported for [Prometheus](https://prometheus.io/): using [prometheus](https://github.com/alexbers/mtprotoproxy/tree/prometheus) branch

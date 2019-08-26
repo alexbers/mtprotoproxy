@@ -86,7 +86,7 @@ mask_host_cached_ip = None
 
 config = {}
 
-if len(sys.argv) < 3:
+if len(sys.argv) < 2:
     random_secret = "".join(random.choice("0123456789abcdef") for i in range(32))
     ad_tag = "3c09c680b76ee91a4c25ad51f742267d"
     print("Usage: mtprotoproxy <port> <secret> [ad_tag] [tls_domain]")
