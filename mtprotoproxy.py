@@ -103,6 +103,10 @@ def init_config():
         conf_dict["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
         if len(sys.argv) > 3:
             conf_dict["AD_TAG"] = sys.argv[3]
+        if len(sys.argv) > 4:
+            conf_dict["TLS_DOMAIN"] = sys.argv[4]
+            conf_dict["TLS_ONLY"] = True
+        conf_dict["SECURE_ONLY"] = True
 
     conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
