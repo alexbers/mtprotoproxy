@@ -1842,6 +1842,7 @@ def try_setup_uvloop():
     try:
         import uvloop
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+        print_err("Found uvloop, using it for optimal performance")
     except ImportError:
         pass
 
