@@ -160,10 +160,10 @@ def init_config():
     conf_dict.setdefault("USER_DATA_QUOTA", {})
 
     # length of used handshake randoms for active fingerprinting protection, zero to disable
-    conf_dict.setdefault("REPLAY_CHECK_LEN", 32768)
+    conf_dict.setdefault("REPLAY_CHECK_LEN", 65536)
 
     # block bad first packets to even more protect against replay-based fingerprinting
-    conf_dict.setdefault("BLOCK_IF_FIRST_PKT_BAD", True)
+    conf_dict.setdefault("BLOCK_IF_FIRST_PKT_BAD", not conf_dict["TLS_ONLY"])
 
     # delay in seconds between stats printing
     conf_dict.setdefault("STATS_PRINT_PERIOD", 600)
