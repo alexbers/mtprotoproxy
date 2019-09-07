@@ -1616,6 +1616,8 @@ async def get_mask_host_cert_len():
             if cert:
                 if len(cert) != fake_cert_len:
                     fake_cert_len = len(cert)
+                    print_err("Got cert from the MASK_HOST %s, its length is %d" %
+                              (config.MASK_HOST, fake_cert_len))
             else:
                 print_err("The MASK_HOST %s is not TLS 1.3 host, this is not recommended" %
                           config.MASK_HOST)
