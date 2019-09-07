@@ -83,6 +83,7 @@ disable_middle_proxy = False
 is_time_skewed = False
 fake_cert_len = random.randrange(1024, 4096)
 mask_host_cached_ip = None
+last_clients_with_time_skew = {}
 
 config = {}
 
@@ -903,6 +904,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
 async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     global used_handshakes
+    global last_clients_with_time_skew
     global fake_cert_len
 
     TIME_SKEW_MIN = -20 * 60
@@ -948,9 +950,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         # some clients fail to read unix time and send the time since boot instead
         client_time_is_small = timestamp < 60*60*24*1000
         if not client_time_is_ok and not is_time_skewed and not client_time_is_small:
-            err_msg = "Client with time skew detected from %s, can be a replay-attack. " % peer[0]
-            err_msg += "Its clocks were %d minutes behind" % ((time.time() - timestamp) // 60)
-            print_err(err_msg)
+            last_clients_with_time_skew[peer[0]] = (time.time() - timestamp) // 60
             continue
 
         http_data = myrandom.getrandbytes(fake_cert_len)
@@ -1506,6 +1506,7 @@ async def handle_client_wrapper(reader, writer):
 
 async def stats_printer():
     global stats
+    global last_clients_with_time_skew
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
 
@@ -1515,6 +1516,13 @@ async def stats_printer():
                 user, stat["connects"], stat["curr_connects"],
                 stat["octets"] / 1000000, stat["msgs"]))
         print(flush=True)
+
+        if last_clients_with_time_skew:
+            print("Clients with time skew (possible replay-attackers):")
+            for ip, skew_minutes in last_clients_with_time_skew.items():
+                print("%s, clocks were %d minutes behind" % (ip, skew_minutes))
+            last_clients_with_time_skew = {}
+            print(flush=True)
 
 
 async def make_https_req(url, host="core.telegram.org"):
