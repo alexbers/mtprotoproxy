@@ -85,6 +85,7 @@ fake_cert_len = random.randrange(1024, 4096)
 mask_host_cached_ip = None
 last_clients_with_time_skew = {}
 last_clients_with_first_pkt_error = collections.Counter()
+last_clients_with_same_handshake = collections.Counter()
 
 config = {}
 
@@ -906,6 +907,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     global used_handshakes
     global last_clients_with_time_skew
+    global last_clients_with_same_handshake
     global fake_cert_len
 
     TIME_SKEW_MIN = -20 * 60
@@ -928,7 +930,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     digest = handshake[DIGEST_POS: DIGEST_POS + DIGEST_LEN]
 
     if digest in used_handshakes:
-        print_err("Active TLS fingerprinting detected from %s, handling it" % peer[0])
+        last_clients_with_same_handshake[peer[0]] += 1
         return False
 
     sess_id_len = handshake[SESSION_ID_LEN_POS]
@@ -1039,6 +1041,7 @@ async def handle_proxy_protocol(reader, peer=None):
 
 async def handle_handshake(reader, writer):
     global used_handshakes
+    global last_clients_with_same_handshake
 
     TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
 
@@ -1084,7 +1087,7 @@ async def handle_handshake(reader, writer):
     enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
 
     if dec_prekey_and_iv in used_handshakes:
-        print_err("Active fingerprinting detected from %s, handling it" % peer[0])
+        last_clients_with_same_handshake[peer[0]] += 1
         await handle_bad_client(reader, writer, handshake)
         return False
 
@@ -1510,6 +1513,7 @@ async def stats_printer():
     global stats
     global last_clients_with_time_skew
     global last_clients_with_first_pkt_error
+    global last_clients_with_same_handshake
 
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
@@ -1526,13 +1530,19 @@ async def stats_printer():
             for ip, skew_minutes in last_clients_with_time_skew.items():
                 print("%s, clocks were %d minutes behind" % (ip, skew_minutes))
             print(flush=True)
-            last_clients_with_time_skew = {}
+            last_clients_with_time_skew.clear()
         if last_clients_with_first_pkt_error:
             print("Clients with error on the first packet (possible replay-attackers):")
             for ip, times in last_clients_with_first_pkt_error.items():
                 print("%s, %d times" % (ip, times))
             print(flush=True)
             last_clients_with_first_pkt_error.clear()
+        if last_clients_with_same_handshake:
+            print("Clients with duplicate handshake (likely replay-attackers):")
+            for ip, times in last_clients_with_same_handshake.items():
+                print("%s, %d times" % (ip, times))
+            print(flush=True)
+            last_clients_with_same_handshake.clear()
 
 
 async def make_https_req(url, host="core.telegram.org"):
