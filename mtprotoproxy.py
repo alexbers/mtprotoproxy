@@ -84,6 +84,7 @@ is_time_skewed = False
 fake_cert_len = random.randrange(1024, 4096)
 mask_host_cached_ip = None
 last_clients_with_time_skew = {}
+last_clients_with_first_pkt_error = collections.Counter()
 
 config = {}
 
@@ -1424,6 +1425,7 @@ async def handle_client(reader_clt, writer_clt):
             return
 
     async def connect_reader_to_writer(rd, wr, user, rd_buf_size, block_if_first_pkt_bad=False):
+        global last_clients_with_first_pkt_error
         is_first_pkt = True
         try:
             while True:
@@ -1439,7 +1441,7 @@ async def handle_client(reader_clt, writer_clt):
 
                     ERR_PKT_DATA = b'l\xfe\xff\xff'
                     if block_if_first_pkt_bad and data == ERR_PKT_DATA:
-                        print_err("Active fingerprinting detected from %s, dropping it" % cl_ip)
+                        last_clients_with_first_pkt_error[cl_ip] += 1
 
                         wr.write_eof()
                         await wr.drain()
@@ -1507,6 +1509,8 @@ async def handle_client_wrapper(reader, writer):
 async def stats_printer():
     global stats
     global last_clients_with_time_skew
+    global last_clients_with_first_pkt_error
+
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
 
@@ -1521,8 +1525,14 @@ async def stats_printer():
             print("Clients with time skew (possible replay-attackers):")
             for ip, skew_minutes in last_clients_with_time_skew.items():
                 print("%s, clocks were %d minutes behind" % (ip, skew_minutes))
-            last_clients_with_time_skew = {}
             print(flush=True)
+            last_clients_with_time_skew = {}
+        if last_clients_with_first_pkt_error:
+            print("Clients with error on the first packet (possible replay-attackers):")
+            for ip, times in last_clients_with_first_pkt_error.items():
+                print("%s, %d times" % (ip, times))
+            print(flush=True)
+            last_clients_with_first_pkt_error.clear()
 
 
 async def make_https_req(url, host="core.telegram.org"):
