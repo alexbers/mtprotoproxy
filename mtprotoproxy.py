@@ -728,7 +728,7 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             self.remote_ip_port += socket.inet_pton(socket.AF_INET, cl_ip)
         else:
             self.remote_ip_port = socket.inet_pton(socket.AF_INET6, cl_ip)
-        self.remote_ip_port += int.to_bytes(cl_port, 4, "little")
+        self.remote_ip_port += int.to_bytes(int(cl_port), 4, "little")
 
         if ":" not in my_ip:
             self.our_ip_port = b"\x00" * 10 + b"\xff\xff"
