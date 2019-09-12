@@ -1005,7 +1005,7 @@ async def handle_proxy_protocol(reader, peer=None):
         if proxy_fam in (PROXY_TCP4, PROXY_TCP6):
             if len(proxy_addr) == 4:
                 src_addr = proxy_addr[0].decode('ascii')
-                src_port = proxy_addr[2].decode('ascii')
+                src_port = int(proxy_addr[2].decode('ascii'))
                 return (src_addr, src_port)
         elif proxy_fam == PROXY_UNKNOWN:
             return peer
