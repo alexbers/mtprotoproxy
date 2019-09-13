@@ -919,7 +919,9 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     TLS_APP_HTTP2_HDR = b"\x17" + TLS_VERS
 
     DIGEST_LEN = 32
+    DIGEST_HALFLEN = 16
     DIGEST_POS = 11
+
 
     SESSION_ID_LEN_POS = DIGEST_POS + DIGEST_LEN
     SESSION_ID_POS = SESSION_ID_LEN_POS + 1
@@ -929,7 +931,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
 
     digest = handshake[DIGEST_POS: DIGEST_POS + DIGEST_LEN]
 
-    if digest in used_handshakes:
+    if digest[:DIGEST_HALFLEN] in used_handshakes:
         last_clients_with_same_handshake[peer[0]] += 1
         return False
 
@@ -975,7 +977,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         if config.REPLAY_CHECK_LEN > 0:
             while len(used_handshakes) >= config.REPLAY_CHECK_LEN:
                 used_handshakes.popitem(last=False)
-            used_handshakes[digest] = True
+            used_handshakes[digest[:DIGEST_HALFLEN]] = True
 
         reader = FakeTLSStreamReader(reader)
         writer = FakeTLSStreamWriter(writer)
