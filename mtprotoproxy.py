@@ -19,6 +19,7 @@ import signal
 import os
 import stat
 import traceback
+import string
 
 
 TG_DATACENTER_PORT = 443
@@ -76,6 +77,8 @@ PADDING_FILLER = b"\x04\x00\x00\x00"
 MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
+PORT_DEFAULT = 3256
+PORT_API_DEFAULT = 3257
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
@@ -89,6 +92,12 @@ last_clients_with_same_handshake = collections.Counter()
 
 config = {}
 
+def generate_secret():
+    random_str = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(16))
+    sha = hashlib.sha256()
+    sha.update(random_str.encode('utf-8'))
+    digest = sha.hexdigest()
+    return digest[:32]
 
 def init_config():
     global config
@@ -98,6 +107,18 @@ def init_config():
     elif len(sys.argv) == 2:
         # launch with own config
         conf_dict = runpy.run_path(sys.argv[1])
+    elif len(sys.argv) > 2 and sys.argv[1] == 'faketls+gensec':
+        conf_dict = {}
+        conf_dict["TLS_ONLY"] = True
+        conf_dict["TLS_DOMAIN"] = sys.argv[2]
+        conf_dict["USERS"] = {"tg": generate_secret()}
+        conf_dict["PORT"] = PORT_DEFAULT
+        conf_dict["API_PORT"] = PORT_API_DEFAULT
+        if len(sys.argv) > 3:
+            conf_dict["PORT"] = int(sys.argv[3])
+        if len(sys.argv) > 4:
+            conf_dict["API_PORT"] = int(sys.argv[4])
+
     else:
         # undocumented way of launching
         conf_dict = {}
@@ -113,7 +134,7 @@ def init_config():
 
     conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
-    conf_dict.setdefault("PORT", 3256)
+    conf_dict.setdefault("PORT", PORT_DEFAULT)
     conf_dict.setdefault("USERS", {"tg":  "00000000000000000000000000000000"})
     conf_dict["AD_TAG"] = bytes.fromhex(conf_dict.get("AD_TAG", ""))
 
@@ -1790,12 +1811,20 @@ def init_ip_info():
             disable_middle_proxy = True
 
 
+API_CONFIG = {}
+
 def print_tg_info():
     global my_ip_info
+    global API_CONFIG
 
+    API_CONFIG['PORT'] = config['PORT']
+    API_CONFIG['ACTIVATORS'] = []
+    API_CONFIG['API_PORT'] = -1
+    if 'API_PORT' in config:
+        API_CONFIG['API_PORT'] = config['API_PORT']
     print_default_warning = False
 
-    if config.PORT == 3256:
+    if config.PORT == PORT_DEFAULT:
         print("The default port 3256 is used, this is not recommended", flush=True)
         if config.TLS_ONLY:
             print("Since you have TLS only mode enabled the best port is 443", flush=True)
@@ -1811,11 +1840,15 @@ def print_tg_info():
                 if not config.SECURE_ONLY:
                     params = {"server": ip, "port": config.PORT, "secret": secret}
                     params_encodeded = urllib.parse.urlencode(params, safe=':')
-                    print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+                    link = 'tg://proxy?{}'.format(params_encodeded)
+                    API_CONFIG['ACTIVATORS'].append(link)
+                    print("{}: tg://proxy?{}".format(user, link), flush=True)
 
                 params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
-                print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+                link = 'tg://proxy?{}'.format(params_encodeded)
+                API_CONFIG['ACTIVATORS'].append(link)
+                print("{}: tg://proxy?{}".format(user, link), flush=True)
 
             tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
             # the base64 links is buggy on ios
@@ -1823,7 +1856,9 @@ def print_tg_info():
             # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
             params = {"server": ip, "port": config.PORT, "secret": tls_secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
-            print("{}: tg://proxy?{} (new)".format(user, params_encodeded), flush=True)
+            link = 'tg://proxy?{}'.format(params_encodeded)
+            API_CONFIG['ACTIVATORS'].append(link)
+            print("{}: tg://proxy?{} (new)".format(user, link), flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
@@ -1840,6 +1875,10 @@ def print_tg_info():
 
     if print_default_warning:
         print_err("Warning: one or more default settings detected")
+    if API_CONFIG['API_PORT'] > 0:
+        print('starting introspection API')
+        from api import APIServer
+        APIServer.start_api(API_CONFIG)
 
 
 def setup_files_limit():
