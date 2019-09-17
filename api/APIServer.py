@@ -5,10 +5,9 @@ import json
 CONFIG = {}
 
 class ServerThread(Thread):
-    def __init__(self, name, config):
+    def __init__(self, name):
         Thread.__init__(self)
         self.name = name
-        self.config = config
 
     def run(self):
         global CONFIG
@@ -50,4 +49,4 @@ class APIHandler(BaseHTTPRequestHandler):
 def start_api(config):
     global CONFIG
     CONFIG = config
-    ServerThread('API Server',config).start()
+    ServerThread('API Server').start()
