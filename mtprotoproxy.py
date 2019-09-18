@@ -107,13 +107,14 @@ def init_config():
     elif len(sys.argv) == 2:
         # launch with own config
         conf_dict = runpy.run_path(sys.argv[1])
-    elif len(sys.argv) > 4 and sys.argv[1] == 'faketls':
+    elif len(sys.argv) > 6 and sys.argv[1] == 'faketls':
         conf_dict = {}
         conf_dict["TLS_ONLY"] = True
         conf_dict["TLS_DOMAIN"] = sys.argv[2]
         conf_dict["USERS"] = {"tg": sys.argv[5]}
         conf_dict["PORT"] = int(sys.argv[3])
         conf_dict["API_PORT"] = int(sys.argv[4])
+        conf_dict["API_TOKEN"] = sys.argv[6]
 
     elif len(sys.argv) > 2 and sys.argv[1] == 'faketls+gensec':
         conf_dict = {}
@@ -1825,11 +1826,12 @@ def print_tg_info():
     global my_ip_info
     global API_CONFIG
 
-    API_CONFIG['PORT'] = config['PORT']
     API_CONFIG['ACTIVATORS'] = []
     API_CONFIG['API_PORT'] = -1
     if 'API_PORT' in config:
         API_CONFIG['API_PORT'] = config['API_PORT']
+    if 'API_TOKEN' in config:
+        API_CONFIG['API_TOKEN'] = config['API_TOKEN']
     print_default_warning = False
 
     if config.PORT == PORT_DEFAULT:

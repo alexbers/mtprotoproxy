@@ -1,6 +1,7 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import json
+import urlparse
 
 CONFIG = {}
 
@@ -11,7 +12,7 @@ class ServerThread(Thread):
 
     def run(self):
         global CONFIG
-        server_class = HTTPServer
+        server_class = ThreadingHTTPServer
         httpd = server_class(('0.0.0.0', CONFIG['API_PORT']), APIHandler)
         httpd.serve_forever()
 
@@ -24,7 +25,17 @@ class APIHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         paths = ['/']
         if self.path in paths:
-            self.respond({'status': 200, 'content' : self.dump_config()})
+            if CONFIG['API_TOKEN']:
+                if "?" in self.path:
+                    params = dict(urlparse.parse_qsl(self.path.split("?")[1], True))
+                    if params['token'] and CONFIG['API_TOKEN'] == params['token']:
+                        self.respond({'status': 200, 'content': self.dump_config()})
+                    else:
+                        self.respond({'status': 403, 'content': 'Invalid token'})
+                else:
+                    self.respond({'status': 403, 'content': 'Token authentication required'})
+            else:
+                self.respond({'status': 200, 'content' : self.dump_config()})
         else:
             self.respond({'status': 404, 'content': 'Not found'})
 
