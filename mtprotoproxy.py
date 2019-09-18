@@ -172,7 +172,7 @@ def init_config():
     # delay in seconds between stats printing
     conf_dict.setdefault("STATS_PRINT_PERIOD", 600)
 
-    # delay in seconds between metric sending, if enabled
+    # delay in seconds between metrics sending, if enabled
     conf_dict.setdefault("SEND_METRICS_PERIOD", 15)
 
     # delay in seconds between middle proxy info updates
@@ -856,7 +856,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
     global mask_host_cached_ip
 
-    update_stats(bad_clients=1)
+    update_stats(connects_bad=1)
 
     if writer_clt.transport.is_closing():
         return
@@ -1400,6 +1400,8 @@ async def handle_client(reader_clt, writer_clt):
     set_ack_timeout(writer_clt.get_extra_info("socket"), config.CLIENT_ACK_TIMEOUT)
     set_bufsizes(writer_clt.get_extra_info("socket"), get_to_tg_bufsize(), get_to_clt_bufsize())
 
+    update_stats(connects_all=1)
+
     try:
         clt_data = await asyncio.wait_for(handle_handshake(reader_clt, writer_clt),
                                           timeout=config.CLIENT_HANDSHAKE_TIMEOUT)
@@ -1631,13 +1633,14 @@ async def send_metrics(host, port):
 
     metrics = []
     metrics.append(["uptime", "counter", "proxy uptime", time.time() - proxy_start_time])
-    metrics.append(["bad_clients", "counter", "clients with bad secret", stats["bad_clients"]])
+    metrics.append(["connects_bad", "counter", "connects with bad secret", stats["connects_bad"]])
+    metrics.append(["connects_all", "counter", "incoming connects", stats["connects_all"]])
 
     user_metrics_desc = [
-        ["connects_all", "counter", "all connects", "connects"],
-        ["connects_curr", "gauge", "current connects", "curr_connects"],
-        ["octets", "counter", "octets proxied", "octets"],
-        ["msgs", "counter", "msgs proxied", "msgs"],
+        ["user_connects", "counter", "all connects", "connects"],
+        ["user_connects_curr", "gauge", "current connects", "curr_connects"],
+        ["user_octets", "counter", "octets proxied", "octets"],
+        ["user_msgs", "counter", "msgs proxied", "msgs"],
     ]
 
     for m_name, m_type, m_desc, stat_key in user_metrics_desc:
