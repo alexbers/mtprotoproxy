@@ -1406,6 +1406,7 @@ async def handle_client(reader_clt, writer_clt):
         clt_data = await asyncio.wait_for(handle_handshake(reader_clt, writer_clt),
                                           timeout=config.CLIENT_HANDSHAKE_TIMEOUT)
     except asyncio.TimeoutError:
+        update_stats(handshake_timeouts=1)
         return
 
     if not clt_data:
@@ -1635,12 +1636,14 @@ async def send_metrics(host, port):
     metrics.append(["uptime", "counter", "proxy uptime", time.time() - proxy_start_time])
     metrics.append(["connects_bad", "counter", "connects with bad secret", stats["connects_bad"]])
     metrics.append(["connects_all", "counter", "incoming connects", stats["connects_all"]])
+    metrics.append(["handshake_timeouts", "counter", "number of timed out handshakes",
+                   stats["handshake_timeouts"]])
 
     user_metrics_desc = [
-        ["user_connects", "counter", "all connects", "connects"],
-        ["user_connects_curr", "gauge", "current connects", "curr_connects"],
-        ["user_octets", "counter", "octets proxied", "octets"],
-        ["user_msgs", "counter", "msgs proxied", "msgs"],
+        ["user_connects", "counter", "user connects", "connects"],
+        ["user_connects_curr", "gauge", "current user connects", "curr_connects"],
+        ["user_octets", "counter", "octets proxied for user", "octets"],
+        ["user_msgs", "counter", "msgs proxied for user", "msgs"],
     ]
 
     for m_name, m_type, m_desc, stat_key in user_metrics_desc:
