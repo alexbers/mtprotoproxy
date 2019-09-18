@@ -1,6 +1,6 @@
 # Async MTProto Proxy #
 
-Fast and simple to setup mtproto proxy written on Python.
+Fast and simple to setup MTProto proxy written in Python.
 
 ## Starting Up ##
     
@@ -26,4 +26,4 @@ The proxy can be launched:
 - with a custom config: `python3 mtprotoproxy.py [configfile]`
 - several times, clients will be automaticaly balanced between instances
 - with uvloop module to get an extra speed boost
-- with runtime statistics exported for [Prometheus](https://prometheus.io/): using [prometheus](https://github.com/alexbers/mtprotoproxy/tree/prometheus) branch
+- with runtime statistics exported to [Prometheus](https://prometheus.io/)
