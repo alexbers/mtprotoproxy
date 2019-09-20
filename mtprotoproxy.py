@@ -1626,7 +1626,7 @@ async def handle_metrics(reader, writer):
         for link in proxy_links:
             link_as_metric = link.copy()
             link_as_metric["val"] = 1
-            metrics.append(["proxy_link_info", "counter", "the info about proxy", link_as_metric])
+            metrics.append(["proxy_link_info", "counter", "the proxy link info", link_as_metric])
 
         user_metrics_desc = [
             ["user_connects", "counter", "user connects", "connects"],
