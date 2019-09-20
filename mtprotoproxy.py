@@ -239,7 +239,7 @@ def apply_upstream_proxy_settings():
     # apply socks settings in place
     if config.SOCKS5_HOST and config.SOCKS5_PORT:
         import socks
-        print_err("Socket mode activated, it is incompatible with advertising and uvloop")
+        print_err("Socket-proxy mode activated, it is incompatible with advertising and uvloop")
         socks.set_default_proxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT,
                                 username=config.SOCKS5_USER, password=config.SOCKS5_PASS)
         if not hasattr(socket, "origsocket"):
