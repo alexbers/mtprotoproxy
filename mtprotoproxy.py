@@ -153,6 +153,8 @@ def init_config():
     # use upstream SOCKS5 proxy
     conf_dict.setdefault("SOCKS5_HOST", None)
     conf_dict.setdefault("SOCKS5_PORT", None)
+    conf_dict.setdefault("SOCKS5_USER", None)
+    conf_dict.setdefault("SOCKS5_PASS", None)
 
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
@@ -233,7 +235,8 @@ def apply_upstream_proxy_settings():
     # apply socks settings in place
     if config.SOCKS5_HOST and config.SOCKS5_PORT:
         import socks
-        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
+        socks.set_default_proxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT,
+                                username=config.SOCKS5_USER, password=config.SOCKS5_PASS)
         if not hasattr(socket, "origsocket"):
             socket.origsocket = socket.socket
             socket.socket = socks.socksocket
