@@ -154,6 +154,12 @@ def init_config():
     conf_dict.setdefault("SOCKS5_HOST", None)
     conf_dict.setdefault("SOCKS5_PORT", None)
 
+    # apply socks settings in place
+    if conf_dict.setdefault("SOCKS5_HOST") and conf_dict.setdefault("SOCKS5_PORT"):
+        import socks
+        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
+        socket.socket = socks.socksocket
+
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
     conf_dict.setdefault("USER_MAX_TCP_CONNS", {})
@@ -1869,12 +1875,6 @@ async def update_middle_proxy_info():
         await asyncio.sleep(config.PROXY_INFO_UPDATE_PERIOD)
 
 
-def init_socks():
-    import socks
-    socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
-    socket.socket = socks.socksocket
-
-
 def init_ip_info():
     global my_ip_info
     global disable_middle_proxy
@@ -2040,8 +2040,6 @@ def main():
     init_stats()
     init_proxy_start_time()
 
-    init_socks()
-
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
         asyncio.set_event_loop(loop)
@@ -2117,8 +2115,6 @@ def main():
 
 if __name__ == "__main__":
     init_config()
-    if config.SOCKS5_HOST and config.SOCKS5_PORT:
-        init_socks()
     init_ip_info()
     print_tg_info()
     main()
