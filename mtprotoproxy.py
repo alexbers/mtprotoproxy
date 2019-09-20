@@ -2004,11 +2004,11 @@ def setup_signals():
 
 
 def try_setup_uvloop():
+    if config.SOCKS5_HOST and config.SOCKS5_PORT:
+        # socks mode is not compatible with uvloop
+        return
     try:
         import uvloop
-        if config.SOCKS5_HOST and config.SOCKS5_PORT:
-            # socks mode is not compatible with uvloop
-            return
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         print_err("Found uvloop, using it for optimal performance")
     except ImportError:
