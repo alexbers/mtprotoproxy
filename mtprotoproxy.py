@@ -4,7 +4,6 @@ import asyncio
 import socket
 import urllib.parse
 import urllib.request
-import socks
 import collections
 import time
 import datetime
@@ -121,10 +120,6 @@ def init_config():
 
     # load advanced settings
 
-    # use upstream SOCKS5 proxy
-    conf_dict.setdefault("SOCKS5_HOST", "localhost")
-    conf_dict.setdefault("SOCKS5_PORT", 0)
-
     # use middle proxy, necessary to show ad
     conf_dict.setdefault("USE_MIDDLE_PROXY", len(conf_dict["AD_TAG"]) == 16)
 
@@ -154,6 +149,10 @@ def init_config():
 
     # the next host's port to forward bad clients
     conf_dict.setdefault("MASK_PORT", 443)
+
+    # use upstream SOCKS5 proxy
+    conf_dict.setdefault("SOCKS5_HOST", None)
+    conf_dict.setdefault("SOCKS5_PORT", None)
 
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
@@ -1870,13 +1869,15 @@ async def update_middle_proxy_info():
         await asyncio.sleep(config.PROXY_INFO_UPDATE_PERIOD)
 
 
+def init_socks():
+    import socks
+    socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
+    socket.socket = socks.socksocket
+
+
 def init_ip_info():
     global my_ip_info
     global disable_middle_proxy
-
-    if not config.SOCKS5_PORT == 0:
-        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
-        socket.socket = socks.socksocket
 
     def get_ip_from_url(url):
         TIMEOUT = 5
@@ -2039,6 +2040,8 @@ def main():
     init_stats()
     init_proxy_start_time()
 
+    init_socks()
+
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
         asyncio.set_event_loop(loop)
@@ -2114,6 +2117,8 @@ def main():
 
 if __name__ == "__main__":
     init_config()
+    if config.SOCKS5_HOST and config.SOCKS5_PORT:
+        init_socks()
     init_ip_info()
     print_tg_info()
     main()
