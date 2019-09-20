@@ -87,6 +87,7 @@ last_clients_with_time_skew = {}
 last_clients_with_first_pkt_error = collections.Counter()
 last_clients_with_same_handshake = collections.Counter()
 proxy_start_time = 0
+proxy_links = []
 
 config = {}
 
@@ -1603,6 +1604,7 @@ async def handle_metrics(reader, writer):
     global user_stats
     global my_ip_info
     global proxy_start_time
+    global proxy_links
     global last_clients_with_time_skew
     global last_clients_with_first_pkt_error
     global last_clients_with_same_handshake
@@ -1620,6 +1622,11 @@ async def handle_metrics(reader, writer):
         metrics.append(["connects_all", "counter", "incoming connects", stats["connects_all"]])
         metrics.append(["handshake_timeouts", "counter", "number of timed out handshakes",
                        stats["handshake_timeouts"]])
+
+        for link in proxy_links:
+            link_as_metric = link.copy()
+            link_as_metric["val"] = 1
+            metrics.append(["proxy_link_info", "counter", "the info about proxy", link_as_metric])
 
         user_metrics_desc = [
             ["user_connects", "counter", "user connects", "connects"],
@@ -1924,6 +1931,7 @@ def init_ip_info():
 
 def print_tg_info():
     global my_ip_info
+    global proxy_links
 
     print_default_warning = False
 
@@ -1937,17 +1945,23 @@ def print_tg_info():
     if not ip_addrs:
         ip_addrs = ["YOUR_IP"]
 
+    proxy_links = []
+
     for user, secret in sorted(config.USERS.items(), key=lambda x: x[0]):
         for ip in ip_addrs:
             if not config.TLS_ONLY:
                 if not config.SECURE_ONLY:
                     params = {"server": ip, "port": config.PORT, "secret": secret}
                     params_encodeded = urllib.parse.urlencode(params, safe=':')
-                    print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+                    classic_link = "tg://proxy?{}".format(params_encodeded)
+                    proxy_links.append({"user": user, "link": classic_link})
+                    print("{}: {}".format(user, classic_link), flush=True)
 
                 params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
-                print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
+                dd_link = "tg://proxy?{}".format(params_encodeded)
+                proxy_links.append({"user": user, "link": dd_link})
+                print("{}: {}".format(user, dd_link), flush=True)
 
             tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
             # the base64 links is buggy on ios
@@ -1955,7 +1969,9 @@ def print_tg_info():
             # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
             params = {"server": ip, "port": config.PORT, "secret": tls_secret}
             params_encodeded = urllib.parse.urlencode(params, safe=':')
-            print("{}: tg://proxy?{} (new)".format(user, params_encodeded), flush=True)
+            tls_link = "tg://proxy?{}".format(params_encodeded)
+            proxy_links.append({"user": user, "link": tls_link})
+            print("{}: {} (new)".format(user, tls_link), flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
