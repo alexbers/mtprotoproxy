@@ -20,3 +20,7 @@ SECURE_ONLY = True
 
 # Tag for advertising, obtainable from @MTProxybot
 # AD_TAG = "3c09c680b76ee91a4c25ad51f742267d"
+
+# Use upstream SOCKS5 proxy for connections (f.e. Tor)
+# SOCKS5_HOST = "localhost"
+# SOCKS5_PORT = 9050
