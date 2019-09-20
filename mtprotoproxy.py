@@ -154,12 +154,6 @@ def init_config():
     conf_dict.setdefault("SOCKS5_HOST", None)
     conf_dict.setdefault("SOCKS5_PORT", None)
 
-    # apply socks settings in place
-    if conf_dict.setdefault("SOCKS5_HOST") and conf_dict.setdefault("SOCKS5_PORT"):
-        import socks
-        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
-        socket.socket = socks.socksocket
-
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
     conf_dict.setdefault("USER_MAX_TCP_CONNS", {})
@@ -233,6 +227,19 @@ def init_config():
 
     # allow access to config by attributes
     config = type("config", (dict,), conf_dict)(conf_dict)
+
+
+def apply_upstream_proxy_settings():
+    # apply socks settings in place
+    if config.SOCKS5_HOST and config.SOCKS5_PORT:
+        import socks
+        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
+        if not hasattr(socket, "origsocket"):
+            socket.origsocket = socket.socket
+            socket.socket = socks.socksocket
+    elif hasattr(socket, "origsocket"):
+        socket.socket = socket.origsocket
+        del socket.origsocket
 
 
 def try_use_cryptography_module():
@@ -1981,6 +1988,7 @@ def setup_signals():
     if hasattr(signal, 'SIGUSR2'):
         def reload_signal(signum, frame):
             init_config()
+            apply_upstream_proxy_settings()
             print("Config reloaded", flush=True, file=sys.stderr)
             print_tg_info()
 
@@ -2115,6 +2123,7 @@ def main():
 
 if __name__ == "__main__":
     init_config()
+    apply_upstream_proxy_settings()
     init_ip_info()
     print_tg_info()
     main()
