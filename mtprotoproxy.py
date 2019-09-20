@@ -156,6 +156,10 @@ def init_config():
     conf_dict.setdefault("SOCKS5_USER", None)
     conf_dict.setdefault("SOCKS5_PASS", None)
 
+    if conf_dict["SOCKS5_HOST"] and conf_dict["SOCKS5_PORT"]:
+        # Disable the middle proxy if using socks, they are not compatible
+        conf_dict["USE_MIDDLE_PROXY"] = False
+
     # user tcp connection limits, the mapping from name to the integer limit
     # one client can create many tcp connections, up to 8
     conf_dict.setdefault("USER_MAX_TCP_CONNS", {})
@@ -235,6 +239,7 @@ def apply_upstream_proxy_settings():
     # apply socks settings in place
     if config.SOCKS5_HOST and config.SOCKS5_PORT:
         import socks
+        print_err("Socket mode activated, it is incompatible with advertising and uvloop")
         socks.set_default_proxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT,
                                 username=config.SOCKS5_USER, password=config.SOCKS5_PASS)
         if not hasattr(socket, "origsocket"):
@@ -2001,6 +2006,9 @@ def setup_signals():
 def try_setup_uvloop():
     try:
         import uvloop
+        if config.SOCKS5_HOST and config.SOCKS5_PORT:
+            # socks mode is not compatible with uvloop
+            return
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         print_err("Found uvloop, using it for optimal performance")
     except ImportError:
