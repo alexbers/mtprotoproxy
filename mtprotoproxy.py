@@ -232,6 +232,9 @@ def init_config():
     # prometheus scrapers whitelist
     conf_dict.setdefault("METRICS_WHITELIST", ["127.0.0.1", "::1"])
 
+    # export proxy link to prometheus
+    conf_dict.setdefault("METRICS_EXPORT_LINKS", False)
+
     # allow access to config by attributes
     config = type("config", (dict,), conf_dict)(conf_dict)
 
@@ -1623,10 +1626,12 @@ async def handle_metrics(reader, writer):
         metrics.append(["handshake_timeouts", "counter", "number of timed out handshakes",
                        stats["handshake_timeouts"]])
 
-        for link in proxy_links:
-            link_as_metric = link.copy()
-            link_as_metric["val"] = 1
-            metrics.append(["proxy_link_info", "counter", "the proxy link info", link_as_metric])
+        if config.METRICS_EXPORT_LINKS:
+            for link in proxy_links:
+                link_as_metric = link.copy()
+                link_as_metric["val"] = 1
+                metrics.append(["proxy_link_info", "counter",
+                                "the proxy link info", link_as_metric])
 
         user_metrics_desc = [
             ["user_connects", "counter", "user connects", "connects"],
