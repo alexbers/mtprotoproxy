@@ -4,6 +4,7 @@ import asyncio
 import socket
 import urllib.parse
 import urllib.request
+import socks
 import collections
 import time
 import datetime
@@ -119,6 +120,10 @@ def init_config():
     conf_dict["AD_TAG"] = bytes.fromhex(conf_dict.get("AD_TAG", ""))
 
     # load advanced settings
+
+    # use upstream SOCKS5 proxy
+    conf_dict.setdefault("SOCKS5_HOST", "localhost")
+    conf_dict.setdefault("SOCKS5_PORT", 0)
 
     # use middle proxy, necessary to show ad
     conf_dict.setdefault("USE_MIDDLE_PROXY", len(conf_dict["AD_TAG"]) == 16)
@@ -1868,6 +1873,10 @@ async def update_middle_proxy_info():
 def init_ip_info():
     global my_ip_info
     global disable_middle_proxy
+
+    if not config.SOCKS5_PORT == 0:
+        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT)
+        socket.socket = socks.socksocket
 
     def get_ip_from_url(url):
         TIMEOUT = 5
