@@ -76,6 +76,7 @@ PADDING_FILLER = b"\x04\x00\x00\x00"
 MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
+STAT_DURATION_BUCKETS = [1, 3, 10, 20, 60, 120, 300, 600, 1800, 3600*24*365*1000]
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
@@ -365,6 +366,16 @@ def update_user_stats(user, **kw_stats):
     if user not in user_stats:
         user_stats[user] = collections.Counter()
     user_stats[user].update(**kw_stats)
+
+
+def update_durations(duration):
+    global stats
+
+    for bucket in STAT_DURATION_BUCKETS:
+        if duration <= bucket:
+            break
+
+    update_stats(**{"connects_with_duration_le_%d" % bucket: 1})
 
 
 def get_curr_connects_count():
@@ -1545,7 +1556,9 @@ async def handle_client(reader_clt, writer_clt):
     )
 
     if (not tcp_limit_hit) and (not user_expired) and (not user_data_quota_hit):
+        start = time.time()
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
+        update_durations(time.time() - start)
 
     update_user_stats(user, curr_connects=-1)
 
@@ -1632,6 +1645,14 @@ async def handle_metrics(reader, writer):
                 link_as_metric["val"] = 1
                 metrics.append(["proxy_link_info", "counter",
                                 "the proxy link info", link_as_metric])
+
+        for bucket in STAT_DURATION_BUCKETS:
+            metric = {
+                "le": str(bucket) if bucket != STAT_DURATION_BUCKETS[-1] else "+Inf",
+                "val": stats["connects_with_duration_le_%d" % bucket]
+            }
+            metrics.append(["connects_by_duration", "counter",
+                            "connects less than some duration", metric])
 
         user_metrics_desc = [
             ["user_connects", "counter", "user connects", "connects"],
