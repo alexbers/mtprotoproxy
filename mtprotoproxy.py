@@ -76,7 +76,10 @@ PADDING_FILLER = b"\x04\x00\x00\x00"
 MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
-STAT_DURATION_BUCKETS = [1, 3, 10, 20, 60, 120, 300, 600, 1800, 3600*24*365*1000]
+STAT_DURATION_BUCKETS = [
+    0.1, 0.25, 0.5, 0.75, 1, 2, 3, 5, 10, 15, 20, 60, 120, 300, 600, 1800, 3600, 7200,
+    3600*24*365*1000
+]
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
@@ -375,7 +378,7 @@ def update_durations(duration):
         if duration <= bucket:
             break
 
-    update_stats(**{"connects_with_duration_le_%d" % bucket: 1})
+    update_stats(**{"connects_with_duration_le_%s" % str(bucket): 1})
 
 
 def get_curr_connects_count():
@@ -1646,13 +1649,15 @@ async def handle_metrics(reader, writer):
                 metrics.append(["proxy_link_info", "counter",
                                 "the proxy link info", link_as_metric])
 
+        bucket_start = 0
         for bucket in STAT_DURATION_BUCKETS:
+            bucket_end = bucket if bucket != STAT_DURATION_BUCKETS[-1] else "+Inf"
             metric = {
-                "le": str(bucket) if bucket != STAT_DURATION_BUCKETS[-1] else "+Inf",
-                "val": stats["connects_with_duration_le_%d" % bucket]
+                "bucket": "%s-%s" % (bucket_start, bucket_end),
+                "val": stats["connects_with_duration_le_%s" % str(bucket)]
             }
-            metrics.append(["connects_by_duration", "counter",
-                            "connects less than some duration", metric])
+            metrics.append(["connects_by_duration", "counter", "connects by duration", metric])
+            bucket_start = bucket_end
 
         user_metrics_desc = [
             ["user_connects", "counter", "user connects", "connects"],
