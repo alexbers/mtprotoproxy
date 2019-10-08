@@ -12,7 +12,7 @@ SECURE_ONLY = True
 
 # Makes the proxy even more hard to detect
 # Compatible only with the recent clients
-# TLS_ONLY = True
+TLS_ONLY = True
 
 # The domain for TLS, bad clients are proxied there
 # Use random existing domain, proxy checks it on start

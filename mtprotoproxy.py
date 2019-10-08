@@ -1999,7 +1999,7 @@ def print_tg_info():
             params_encodeded = urllib.parse.urlencode(params, safe=':')
             tls_link = "tg://proxy?{}".format(params_encodeded)
             proxy_links.append({"user": user, "link": tls_link})
-            print("{}: {} (new)".format(user, tls_link), flush=True)
+            print("{}: {}".format(user, tls_link), flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
