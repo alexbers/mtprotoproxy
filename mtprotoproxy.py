@@ -76,10 +76,7 @@ PADDING_FILLER = b"\x04\x00\x00\x00"
 MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
-STAT_DURATION_BUCKETS = [
-    0.1, 0.25, 0.5, 0.75, 1, 2, 3, 5, 10, 15, 20, 60, 120, 300, 600, 1800, 3600, 7200,
-    3600*24*365*1000
-]
+STAT_DURATION_BUCKETS = [0.1, 0.5, 1, 2, 5, 15, 60, 300, 600, 1800, 2**31 - 1]
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
