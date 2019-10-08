@@ -7,5 +7,4 @@ services:
     volumes:
         - ./config.py:/home/tgproxy/config.py
         - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
-    # command: "touch /tmp/qqqq2"
 #    mem_limit: 1024m
