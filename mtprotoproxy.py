@@ -236,6 +236,9 @@ def init_config():
     # export proxy link to prometheus
     conf_dict.setdefault("METRICS_EXPORT_LINKS", False)
 
+    # default prefix for metrics
+    conf_dict.setdefault("METRICS_PREFIX", "mtprotoproxy_")
+
     # allow access to config by attributes
     config = type("config", (dict,), conf_dict)(conf_dict)
 
@@ -1586,6 +1589,7 @@ def make_metrics_pkt(metrics):
     used_names = set()
 
     for name, m_type, desc, val in metrics:
+        name = config.METRICS_PREFIX + name
         if name not in used_names:
             pkt_body_list.append("# HELP %s %s" % (name, desc))
             pkt_body_list.append("# TYPE %s %s" % (name, m_type))
