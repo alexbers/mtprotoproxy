@@ -66,6 +66,8 @@ TLS_HANDSHAKE_LEN = 1 + 2 + 2 + 512
 PROTO_TAG_POS = 56
 DC_IDX_POS = 60
 
+MIN_CERT_LEN = 1024
+
 PROTO_TAG_ABRIDGED = b"\xef\xef\xef\xef"
 PROTO_TAG_INTERMEDIATE = b"\xee\xee\xee\xee"
 PROTO_TAG_SECURE = b"\xdd\xdd\xdd\xdd"
@@ -1807,7 +1809,11 @@ async def get_mask_host_cert_len():
             task = get_encrypted_cert(config.MASK_HOST, config.MASK_PORT, config.TLS_DOMAIN)
             cert = await asyncio.wait_for(task, timeout=GET_CERT_TIMEOUT)
             if cert:
-                if len(cert) != fake_cert_len:
+                if len(cert) < MIN_CERT_LEN:
+                    msg = ("The MASK_HOST %s returned several TLS records, this is not supported" %
+                           config.MASK_HOST)
+                    print_err(msg)
+                elif len(cert) != fake_cert_len:
                     fake_cert_len = len(cert)
                     print_err("Got cert from the MASK_HOST %s, its length is %d" %
                               (config.MASK_HOST, fake_cert_len))
