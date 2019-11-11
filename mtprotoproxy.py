@@ -1533,7 +1533,7 @@ async def handle_client(reader_clt, writer_clt):
                     update_user_stats(user, octets=len(data), msgs=1)
                     wr.write(data, extra)
                     await wr.drain()
-        except (OSError, asyncio.streams.IncompleteReadError) as e:
+        except (OSError, asyncio.IncompleteReadError) as e:
             # print_err(e)
             pass
 
