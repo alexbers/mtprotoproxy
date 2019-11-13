@@ -2186,29 +2186,29 @@ def main():
 
     if config.LISTEN_ADDR_IPV4:
         task = asyncio.start_server(handle_client_wrapper, config.LISTEN_ADDR_IPV4, config.PORT,
-                                    limit=get_to_tg_bufsize(), reuse_port=reuse_port, loop=loop)
+                                    limit=get_to_tg_bufsize(), reuse_port=reuse_port)
         servers.append(loop.run_until_complete(task))
 
     if config.LISTEN_ADDR_IPV6 and socket.has_ipv6:
         task = asyncio.start_server(handle_client_wrapper, config.LISTEN_ADDR_IPV6, config.PORT,
-                                    limit=get_to_tg_bufsize(), reuse_port=reuse_port, loop=loop)
+                                    limit=get_to_tg_bufsize(), reuse_port=reuse_port)
         servers.append(loop.run_until_complete(task))
 
     if config.LISTEN_UNIX_SOCK and has_unix:
         remove_unix_socket(config.LISTEN_UNIX_SOCK)
         task = asyncio.start_unix_server(handle_client_wrapper, config.LISTEN_UNIX_SOCK,
-                                         limit=get_to_tg_bufsize(), loop=loop)
+                                         limit=get_to_tg_bufsize())
         servers.append(loop.run_until_complete(task))
         os.chmod(config.LISTEN_UNIX_SOCK, 0o666)
 
     if config.METRICS_PORT is not None:
         if config.METRICS_LISTEN_ADDR_IPV4:
             task = asyncio.start_server(handle_metrics, config.METRICS_LISTEN_ADDR_IPV4,
-                                        config.METRICS_PORT, loop=loop)
+                                        config.METRICS_PORT)
             servers.append(loop.run_until_complete(task))
         if config.METRICS_LISTEN_ADDR_IPV6 and socket.has_ipv6:
             task = asyncio.start_server(handle_metrics, config.METRICS_LISTEN_ADDR_IPV6,
-                                        config.METRICS_PORT, loop=loop)
+                                        config.METRICS_PORT)
             servers.append(loop.run_until_complete(task))
 
     try:
