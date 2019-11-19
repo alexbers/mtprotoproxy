@@ -437,7 +437,7 @@ myrandom = MyRandom()
 
 
 class TgConnectionPool:
-    MAX_CONNS_IN_POOL = 4
+    MAX_CONNS_IN_POOL = 64
 
     def __init__(self):
         self.pools = {}
