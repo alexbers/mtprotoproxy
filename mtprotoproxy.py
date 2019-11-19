@@ -2054,7 +2054,8 @@ def print_tg_info():
             proxy_links.append({"user": user, "link": tls_link})
             print("{}: {}".format(user, tls_link), flush=True)
 
-        if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"]:
+        if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef",
+                      "00000000000000000000000000000001"]:
             msg = "The default secret {} is used, this is not recommended".format(secret)
             print(msg, flush=True)
             random_secret = "".join(myrandom.choice("0123456789abcdef") for i in range(32))

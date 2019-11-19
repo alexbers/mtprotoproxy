@@ -1,9 +1,9 @@
-PORT = 3256
+PORT = 443
 
 # name -> secret (32 hex chars)
 USERS = {
-    "tg":  "00000000000000000000000000000000",
-    "tg2": "0123456789abcdef0123456789abcdef"
+    "tg":  "00000000000000000000000000000001",
+#    "tg2": "0123456789abcdef0123456789abcdef",
 }
 
 # Makes the proxy harder to detect
