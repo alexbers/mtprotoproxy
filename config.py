@@ -6,13 +6,16 @@ USERS = {
 #    "tg2": "0123456789abcdef0123456789abcdef",
 }
 
+OPERATING_MODES = {
+#Classic mode without any obfuscation
+    "unsecure": False,
 # Makes the proxy harder to detect
 # Can be incompatible with very old clients
-SECURE_ONLY = True
-
+    "secure": True,
 # Makes the proxy even more hard to detect
 # Compatible only with the recent clients
-TLS_ONLY = True
+    "tls": True
+}
 
 # The domain for TLS, bad clients are proxied there
 # Use random existing domain, proxy checks it on start
