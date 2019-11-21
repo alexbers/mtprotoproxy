@@ -109,12 +109,12 @@ def init_config():
         conf_dict["PORT"] = int(sys.argv[1])
         secrets = sys.argv[2].split(",")
         conf_dict["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
+        conf_dict["MODES"] = {"classic": False, "secure": True, "tls": True}
         if len(sys.argv) > 3:
             conf_dict["AD_TAG"] = sys.argv[3]
         if len(sys.argv) > 4:
             conf_dict["TLS_DOMAIN"] = sys.argv[4]
-            conf_dict["TLS_ONLY"] = True
-        conf_dict["SECURE_ONLY"] = True
+            conf_dict["MODES"] = {"classic": False, "secure": False, "tls": True}
 
     conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
@@ -133,11 +133,43 @@ def init_config():
     # disables tg->client trafic reencryption, faster but less secure
     conf_dict.setdefault("FAST_MODE", True)
 
-    # doesn't allow to connect in not-secure mode
-    conf_dict.setdefault("SECURE_ONLY", False)
+    # enables some working modes
+    modes = conf_dict.get("MODES", {})
 
-    # allows to connect in tls mode only
-    conf_dict.setdefault("TLS_ONLY", False)
+    if "MODES" not in conf_dict:
+        modes.setdefault("classic", True)
+        modes.setdefault("secure", True)
+        modes.setdefault("tls", True)
+    else:
+        modes.setdefault("classic", False)
+        modes.setdefault("secure", False)
+        modes.setdefault("tls", False)
+
+    legacy_warning = False
+    if "SECURE_ONLY" in conf_dict:
+        legacy_warning = True
+        modes["classic"] = not bool(conf_dict["SECURE_ONLY"])
+
+    if "TLS_ONLY" in conf_dict:
+        legacy_warning = True
+        if conf_dict["TLS_ONLY"]:
+            modes["classic"] = False
+            modes["secure"] = False
+
+    if not modes["classic"] and not modes["secure"] and not modes["tls"]:
+        print_err("No known modes enabled, enabling tls-only mode")
+        modes["tls"] = True
+
+    if legacy_warning:
+        print_err("Legacy options SECURE_ONLY or TLS_ONLY detected")
+        print_err("Please use MODES in your config instead:")
+        print_err("MODES = {")
+        print_err('    "classic": %s,' % modes["classic"])
+        print_err('    "secure": %s,' % modes["secure"])
+        print_err('    "tls": %s' % modes["tls"])
+        print_err("}")
+
+    conf_dict["MODES"] = modes
 
     # accept incoming connections only with proxy protocol v1/v2, useful for nginx and haproxy
     conf_dict.setdefault("PROXY_PROTOCOL", False)
@@ -181,7 +213,8 @@ def init_config():
     conf_dict.setdefault("REPLAY_CHECK_LEN", 65536)
 
     # block bad first packets to even more protect against replay-based fingerprinting
-    conf_dict.setdefault("BLOCK_IF_FIRST_PKT_BAD", not conf_dict["TLS_ONLY"])
+    block_on_first_pkt = conf_dict["MODES"]["classic"] or conf_dict["MODES"]["secure"]
+    conf_dict.setdefault("BLOCK_IF_FIRST_PKT_BAD", block_on_first_pkt)
 
     # delay in seconds between stats printing
     conf_dict.setdefault("STATS_PRINT_PERIOD", 600)
@@ -1202,7 +1235,7 @@ async def handle_handshake(reader, writer):
         reader, writer = tls_handshake_result
         handshake = await reader.readexactly(HANDSHAKE_LEN)
     else:
-        if config.TLS_ONLY:
+        if not config.MODES["classic"] and not config.MODES["secure"]:
             await handle_bad_client(reader, writer, handshake)
             return False
         handshake += await reader.readexactly(HANDSHAKE_LEN - len(handshake))
@@ -1232,8 +1265,14 @@ async def handle_handshake(reader, writer):
         if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE, PROTO_TAG_SECURE):
             continue
 
-        if config.SECURE_ONLY and proto_tag != PROTO_TAG_SECURE:
-            continue
+        if proto_tag == PROTO_TAG_SECURE:
+            if is_tls_handshake and not config.MODES["tls"]:
+                continue
+            if not is_tls_handshake and not config.MODES["secure"]:
+                continue
+        else:
+            if not config.MODES["classic"]:
+                continue
 
         dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
 
@@ -2018,7 +2057,7 @@ def print_tg_info():
 
     if config.PORT == 3256:
         print("The default port 3256 is used, this is not recommended", flush=True)
-        if config.TLS_ONLY:
+        if not config.MODES["classic"] and not config.MODES["secure"]:
             print("Since you have TLS only mode enabled the best port is 443", flush=True)
         print_default_warning = True
 
@@ -2030,29 +2069,30 @@ def print_tg_info():
 
     for user, secret in sorted(config.USERS.items(), key=lambda x: x[0]):
         for ip in ip_addrs:
-            if not config.TLS_ONLY:
-                if not config.SECURE_ONLY:
-                    params = {"server": ip, "port": config.PORT, "secret": secret}
-                    params_encodeded = urllib.parse.urlencode(params, safe=':')
-                    classic_link = "tg://proxy?{}".format(params_encodeded)
-                    proxy_links.append({"user": user, "link": classic_link})
-                    print("{}: {}".format(user, classic_link), flush=True)
+            if config.MODES["classic"]:
+                params = {"server": ip, "port": config.PORT, "secret": secret}
+                params_encodeded = urllib.parse.urlencode(params, safe=':')
+                classic_link = "tg://proxy?{}".format(params_encodeded)
+                proxy_links.append({"user": user, "link": classic_link})
+                print("{}: {}".format(user, classic_link), flush=True)
 
+            if config.MODES["secure"]:
                 params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 dd_link = "tg://proxy?{}".format(params_encodeded)
                 proxy_links.append({"user": user, "link": dd_link})
                 print("{}: {}".format(user, dd_link), flush=True)
 
-            tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
-            # the base64 links is buggy on ios
-            # tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
-            # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
-            params = {"server": ip, "port": config.PORT, "secret": tls_secret}
-            params_encodeded = urllib.parse.urlencode(params, safe=':')
-            tls_link = "tg://proxy?{}".format(params_encodeded)
-            proxy_links.append({"user": user, "link": tls_link})
-            print("{}: {}".format(user, tls_link), flush=True)
+            if config.MODES["tls"]:
+                tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
+                # the base64 links is buggy on ios
+                # tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
+                # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
+                params = {"server": ip, "port": config.PORT, "secret": tls_secret}
+                params_encodeded = urllib.parse.urlencode(params, safe=':')
+                tls_link = "tg://proxy?{}".format(params_encodeded)
+                proxy_links.append({"user": user, "link": tls_link})
+                print("{}: {}".format(user, tls_link), flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef",
                       "00000000000000000000000000000001"]:
