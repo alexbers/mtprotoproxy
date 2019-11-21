@@ -15,7 +15,7 @@ MODES = {
     "secure": False,
 
     # Makes the proxy even more hard to detect
-    # Compatible only with the recent clients
+    # Can be incompatible with old clients
     "tls": True
 }
 
