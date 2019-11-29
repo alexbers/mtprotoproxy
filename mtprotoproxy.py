@@ -82,6 +82,8 @@ STAT_DURATION_BUCKETS = [0.1, 0.5, 1, 2, 5, 15, 60, 300, 600, 1800, 2**31 - 1]
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
+client_ips = collections.OrderedDict()
+last_client_ips = {}
 disable_middle_proxy = False
 is_time_skewed = False
 fake_cert_len = random.randrange(1024, 4096)
@@ -211,6 +213,9 @@ def init_config():
 
     # length of used handshake randoms for active fingerprinting protection, zero to disable
     conf_dict.setdefault("REPLAY_CHECK_LEN", 65536)
+
+    # length of last client ip addresses for logging
+    conf_dict.setdefault("CLIENT_IPS_LEN", 131072)
 
     # block bad first packets to even more protect against replay-based fingerprinting
     block_on_first_pkt = conf_dict["MODES"]["classic"] or conf_dict["MODES"]["secure"]
@@ -1064,6 +1069,8 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
 async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     global used_handshakes
+    global client_ips
+    global last_client_ips
     global last_clients_with_time_skew
     global last_clients_with_same_handshake
     global fake_cert_len
@@ -1136,6 +1143,13 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
                 used_handshakes.popitem(last=False)
             used_handshakes[digest[:DIGEST_HALFLEN]] = True
 
+        if config.CLIENT_IPS_LEN > 0:
+            while len(client_ips) >= config.CLIENT_IPS_LEN:
+                client_ips.popitem(last=False)
+            if peer[0] not in client_ips:
+                client_ips[peer[0]] = True
+                last_client_ips[peer[0]] = True
+
         reader = FakeTLSStreamReader(reader)
         writer = FakeTLSStreamWriter(writer)
         return reader, writer
@@ -1200,6 +1214,8 @@ async def handle_proxy_protocol(reader, peer=None):
 
 async def handle_handshake(reader, writer):
     global used_handshakes
+    global client_ips
+    global last_client_ips
     global last_clients_with_same_handshake
 
     TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
@@ -1280,6 +1296,13 @@ async def handle_handshake(reader, writer):
             while len(used_handshakes) >= config.REPLAY_CHECK_LEN:
                 used_handshakes.popitem(last=False)
             used_handshakes[dec_prekey_and_iv] = True
+
+        if config.CLIENT_IPS_LEN > 0:
+            while len(client_ips) >= config.CLIENT_IPS_LEN:
+                client_ips.popitem(last=False)
+            if peer[0] not in client_ips:
+                client_ips[peer[0]] = True
+                last_client_ips[peer[0]] = True
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
@@ -1768,6 +1791,7 @@ async def handle_metrics(reader, writer):
 
 async def stats_printer():
     global user_stats
+    global last_client_ips
     global last_clients_with_time_skew
     global last_clients_with_first_pkt_error
     global last_clients_with_same_handshake
@@ -1781,6 +1805,13 @@ async def stats_printer():
                 user, stat["connects"], stat["curr_connects"],
                 stat["octets"] / 1000000, stat["msgs"]))
         print(flush=True)
+
+        if last_client_ips:
+            print("New IPs:")
+            for ip in last_client_ips:
+                print(ip)
+            print(flush=True)
+            last_client_ips.clear()
 
         if last_clients_with_time_skew:
             print("Clients with time skew (possible replay-attackers):")
