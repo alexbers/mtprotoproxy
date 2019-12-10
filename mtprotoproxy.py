@@ -19,7 +19,9 @@ import signal
 import os
 import stat
 import traceback
+import resource
 
+resource.setrlimit(resource.RLIMIT_NOFILE, (65536, 65536))
 
 TG_DATACENTER_PORT = 443
 
