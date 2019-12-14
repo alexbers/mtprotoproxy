@@ -1,0 +1,16 @@
+[Unit]
+Description=Fast and simple to setup MTProto proxy written in Python
+ConditionFileIsExecutable=/opt/mtprotoproxy/mtprotoproxy.py
+
+[Service]
+Type=simple
+StartLimitInterval=5
+StartLimitBurst=10
+ExecStart=/opt/mtprotoproxy/mtprotoproxy.py
+WorkingDirectory=/opt/mtprotoproxy
+Restart=always
+RestartSec=120
+
+[Install]
+WantedBy=multi-user.target
+
