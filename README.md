@@ -20,6 +20,11 @@ To advertise a channel get a tag from **@MTProxybot** and put it to *config.py*.
 The proxy performance should be enough to comfortably serve about 4 000 simultaneous users on
 the VDS instance with 1 CPU core and 1024MB RAM.
 
+## More Instructions ##
+
+- [Running without Docker](https://github.com/alexbers/mtprotoproxy/wiki/Running-Without-Docker)
+- [Optimization and fine tuning](https://github.com/alexbers/mtprotoproxy/wiki/Optimization-and-Fine-Tuning)
+
 ## Advanced Usage ##
 
 The proxy can be launched:
