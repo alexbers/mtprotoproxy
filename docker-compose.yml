@@ -1,10 +1,9 @@
-version: '2.0'
+version: "2.0"
 services:
   mtprotoproxy:
     build: .
     restart: unless-stopped
     network_mode: "host"
-    volumes:
-        - ./config.py:/home/tgproxy/config.py
-        - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
-#    mem_limit: 1024m
+    environment:
+      TLS_DOMAIN: "hsrv.pw"
+      USERS: '{"tg": "a3ab0e5f81ec7dc7a9404efb083e4c4a"}'

@@ -7,9 +7,9 @@ RUN apk add --no-cache python3 py3-cryptography ca-certificates libcap
 RUN chown -R tgproxy:tgproxy /home/tgproxy
 RUN setcap cap_net_bind_service=+ep /usr/bin/python3.7
 
-COPY mtprotoproxy.py config.py /home/tgproxy/
+COPY mtprotoproxy.py env.py /home/tgproxy/
 
 USER tgproxy
 
 WORKDIR /home/tgproxy/
-CMD ["python3", "mtprotoproxy.py"]
+CMD ["python3", "mtprotoproxy.py", "env.py"]
