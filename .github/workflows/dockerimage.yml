@@ -3,12 +3,18 @@ name: Docker Image CI
 on: [push]
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      - uses: actions/checkout@v1
+      - name: Extract repo name
+        shell: bash
+        run: echo "##[set-output name=repository;]$(echo ${GITHUB_REPOSITORY}|sed 's/\//-/g')"
+        id: extract_repository
+      - name: Extract branch name
+        shell: bash
+        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
+      - name: Build the Docker image
+        run: docker build . --file Dockerfile --tag ${{ steps.extract_repository.outputs.repository }}:$(date +%s) --tag ${{ steps.extract_repository.outputs.repository }}:${{ steps.extract_branch.outputs.branch }}
