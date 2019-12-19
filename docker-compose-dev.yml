@@ -1,0 +1,6 @@
+version: "2.0"
+services:
+  mtprotoproxy:
+    volumes:
+      - ./config.py:/home/tgproxy/config.py
+      - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
