@@ -67,6 +67,6 @@ The proxy can be launched:
 - with uvloop module to get an extra speed boost
 - with runtime statistics exported to [Prometheus](https://prometheus.io/)
 
-```
+## Development
 
-```
+- You can use `docker-compose-dev.yml` for a developer's purpose: `docker-compose -f docker-compose.yml -f docker-compose-dev.yml up`
