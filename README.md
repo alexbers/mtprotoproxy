@@ -15,13 +15,21 @@ Fast and simple to setup MTProto proxy written in Python.
 
 The below table lists all of the configuration that are configurable for mtproxy.
 
-| Configuration/Environment Variable | Purpose                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| USERS                              | **(Required)** The dictionary of users. Format: name -> secret (32 hex chars), for example: `{"tg": "00000000000000000000000000000002"}`                                                                                                                                                                                    |
-| MODES                              | **(Required)** The dictionary of modes. Format: `{<br># Classic mode, easy to detect <br> "classic": False,<br># Makes the proxy harder to detect<br>#Can be incompatible with very old clients<br>"secure": False,<br># Makes the proxy even more hard to detect<br># Can be incompatible with old clients<br>"tls": True` |
-| TLS_DOMAIN                         | **(Optional)** The domain for TLS mode, bad clients are proxied there. Use random existing domain, proxy checks it on start. For example: "domain.ltd"                                                                                                                                                                      |
-| AD_TAG                             | **(Optional)** Tag for advertising, obtainable from @MTProxybot.                                                                                                                                                                                                                                                            |
-| PORT                               | **(Optional)** Port of the mtproxy is listening on (Default: 443 (HTTPS)).                                                                                                                                                                                                                                                  |
+| Variable   | Purpose                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| USERS      | **(Required)** The dictionary of users. Format: `name -> secret (32 hex chars)`, for example: `{"tg": "00000000000000000000000000000002"}`             |
+| MODES      | **(Required)** The dictionary of modes. Format: `{"classic": False, "secure": False, "tls": True}`                                                     |
+| TLS_DOMAIN | **(Optional)** The domain for TLS mode, bad clients are proxied there. Use random existing domain, proxy checks it on start. For example: "domain.ltd" |
+| AD_TAG     | **(Optional)** Tag for advertising, obtainable from @MTProxybot.                                                                                       |
+| PORT       | **(Optional)** Port of the mtproxy is listening on (Default: 443 (HTTPS)).                                                                             |
+
+## MODES
+
+| Mode    | Purpose                                                                              |
+| ------- | ------------------------------------------------------------------------------------ |
+| classic | Classic mode, easy to detect.                                                        |
+| secure  | Makes the proxy harder to detect. Can be incompatible with very old clients.         |
+| tls     | Makes the proxy even more hard to detect. Can be incompatible with very old clients. |
 
 ## Run with the environment variables
 

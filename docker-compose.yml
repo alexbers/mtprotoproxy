@@ -5,5 +5,7 @@ services:
     restart: unless-stopped
     network_mode: "host"
     environment:
-      TLS_DOMAIN: "hsrv.pw"
-      USERS: '{"tg": "a3ab0e5f81ec7dc7a9404efb083e4c4a"}'
+      USERS: '{"tg": "00000000000000000000000000000001"}'
+      MODES: '{"classic": False, "secure": False, "tls": True}'
+      # TLS_DOMAIN: "www.google.com"
+      # AD_TAG = "3c09c680b76ee91a4c25ad51f742267d"
