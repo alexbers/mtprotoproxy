@@ -6,6 +6,11 @@ Fast and simple to setup MTProto proxy written in Python.
 
 ### Docker
 
+1. Just run: `docker run --name mtproxy --network host alexbers/mtprotoproxy`
+2. _(optional, recommended)_ add desired environment variables, for example: `docker run --name mtproxy -p 8080:8080 -e PORT=8080 -e TLS_DOMAIN=google.com -e USERS='{"tg": "00000000000000000000000000000001"}' alexbers/mtprotoproxy`
+
+### Docker (local)
+
 1. `git clone -b stable https://github.com/alexbers/mtprotoproxy.git; cd mtprotoproxy`
 2. _(optional, recommended)_ edit the `environment` section in the `docker-compose.yml` and set environment variables: **PORT**, **USERS** and **AD_TAG** (see [the Configuration Table](#configuration))
 3. `docker-compose up -d` (or just `python3 mtprotoproxy.py` if you don't like Docker)
