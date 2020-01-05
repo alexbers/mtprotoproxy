@@ -1,9 +1,16 @@
 version: '2.0'
 services:
   mtprotoproxy:
-    build: .
+    image: mtprotoproxy
     restart: unless-stopped
     network_mode: "host"
+    environment: 
+      - TG_KEY=00000000000000000000000000000001
+      - SECURE_ONLY=true
+      - TLS_ONLY=true
+      - TLS_DOMAIN=www.drive.google.com
+      - AD_TAG=3c09c680b76ee91a4c25ad51f742267d
+
     volumes:
         - ./config.py:/home/tgproxy/config.py
         - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
