@@ -89,7 +89,6 @@ is_time_skewed = False
 fake_cert_len = random.randrange(1024, 4096)
 mask_host_cached_ip = None
 last_clients_with_time_skew = {}
-last_clients_with_first_pkt_error = collections.Counter()
 last_clients_with_same_handshake = collections.Counter()
 proxy_start_time = 0
 proxy_links = []
@@ -216,10 +215,6 @@ def init_config():
 
     # length of last client ip addresses for logging
     conf_dict.setdefault("CLIENT_IPS_LEN", 131072)
-
-    # block bad first packets to even more protect against replay-based fingerprinting
-    block_on_first_pkt = conf_dict["MODES"]["classic"] or conf_dict["MODES"]["secure"]
-    conf_dict.setdefault("BLOCK_IF_FIRST_PKT_BAD", block_on_first_pkt)
 
     # delay in seconds between stats printing
     conf_dict.setdefault("STATS_PRINT_PERIOD", 600)
@@ -1607,9 +1602,7 @@ async def handle_client(reader_clt, writer_clt):
         else:
             return
 
-    async def connect_reader_to_writer(rd, wr, user, rd_buf_size, block_if_first_pkt_bad=False):
-        global last_clients_with_first_pkt_error
-        is_first_pkt = True
+    async def connect_reader_to_writer(rd, wr, user, rd_buf_size):
         try:
             while True:
                 data = await rd.read(rd_buf_size)
@@ -1617,18 +1610,6 @@ async def handle_client(reader_clt, writer_clt):
                     data, extra = data
                 else:
                     extra = {}
-
-                # protection against replay-based fingerprinting
-                if is_first_pkt:
-                    is_first_pkt = False
-
-                    ERR_PKT_DATA = b'l\xfe\xff\xff'
-                    if block_if_first_pkt_bad and data == ERR_PKT_DATA:
-                        last_clients_with_first_pkt_error[cl_ip] += 1
-
-                        wr.write_eof()
-                        await wr.drain()
-                        return
 
                 if not data:
                     wr.write_eof()
@@ -1642,8 +1623,7 @@ async def handle_client(reader_clt, writer_clt):
             # print_err(e)
             pass
 
-    tg_to_clt = connect_reader_to_writer(reader_tg, writer_clt, user, get_to_clt_bufsize(),
-                                         block_if_first_pkt_bad=config.BLOCK_IF_FIRST_PKT_BAD)
+    tg_to_clt = connect_reader_to_writer(reader_tg, writer_clt, user, get_to_clt_bufsize())
     clt_to_tg = connect_reader_to_writer(reader_clt, writer_tg, user, get_to_tg_bufsize())
     task_tg_to_clt = asyncio.ensure_future(tg_to_clt)
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
@@ -1733,7 +1713,6 @@ async def handle_metrics(reader, writer):
     global proxy_start_time
     global proxy_links
     global last_clients_with_time_skew
-    global last_clients_with_first_pkt_error
     global last_clients_with_same_handshake
 
     client_ip = writer.get_extra_info("peername")[0]
@@ -1793,7 +1772,6 @@ async def stats_printer():
     global user_stats
     global last_client_ips
     global last_clients_with_time_skew
-    global last_clients_with_first_pkt_error
     global last_clients_with_same_handshake
 
     while True:
@@ -1819,12 +1797,6 @@ async def stats_printer():
                 print("%s, clocks were %d minutes behind" % (ip, skew_minutes))
             print(flush=True)
             last_clients_with_time_skew.clear()
-        if last_clients_with_first_pkt_error:
-            print("Clients with error on the first packet (possible replay-attackers):")
-            for ip, times in last_clients_with_first_pkt_error.items():
-                print("%s, %d times" % (ip, times))
-            print(flush=True)
-            last_clients_with_first_pkt_error.clear()
         if last_clients_with_same_handshake:
             print("Clients with duplicate handshake (likely replay-attackers):")
             for ip, times in last_clients_with_same_handshake.items():
