@@ -2260,7 +2260,13 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    for task in asyncio.Task.all_tasks():
+    try:
+        tasks = asyncio.all_tasks(loop)
+    except AttributeError:
+        # for compatibility with python 3.6
+        tasks = asyncio.Task.all_tasks(loop)
+
+    for task in tasks:
         task.cancel()
 
     for server in servers:
