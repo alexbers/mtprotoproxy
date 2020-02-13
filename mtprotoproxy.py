@@ -1760,7 +1760,7 @@ async def handle_metrics(reader, writer):
             ["user_octets_from", "counter", "octets proxied from user", "octets_from_client"],
             ["user_octets_to", "counter", "octets proxied to user", "octets_to_client"],
             ["user_msgs_from", "counter", "msgs proxied from user", "msgs_from_client"],
-            ["user_msgs_to", "counter", "msgs proxied from user", "msgs_to_client"],
+            ["user_msgs_to", "counter", "msgs proxied to user", "msgs_to_client"],
         ]
 
         for m_name, m_type, m_desc, stat_key in user_metrics_desc:
