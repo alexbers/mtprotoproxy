@@ -1013,7 +1013,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
 
                 writer.write(data)
                 await writer.drain()
-        except OSError:
+        except (OSError, asyncio.IncompleteReadError) as e:
             pass
 
     writer_srv = None
