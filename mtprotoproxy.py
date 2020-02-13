@@ -2143,6 +2143,11 @@ def setup_files_limit():
         pass
 
 
+def setup_asyncio():
+    # get rid of annoying "socket.send() raised exception" log messages
+    asyncio.constants.LOG_THRESHOLD_FOR_CONNLOST_WRITES = 100
+
+
 def setup_signals():
     if hasattr(signal, 'SIGUSR1'):
         def debug_signal(signum, frame):
@@ -2276,6 +2281,7 @@ def main():
     init_ip_info()
     print_tg_info()
 
+    setup_asyncio()
     setup_files_limit()
     setup_signals()
     try_setup_uvloop()
