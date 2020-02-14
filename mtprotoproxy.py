@@ -2295,7 +2295,8 @@ def main():
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(loop_exception_handler)
 
-    for task in create_utilitary_tasks(loop):
+    utilitary_tasks = create_utilitary_tasks(loop)
+    for task in utilitary_tasks:
         asyncio.ensure_future(task)
 
     servers = create_servers(loop)
