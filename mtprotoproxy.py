@@ -216,6 +216,9 @@ def init_config():
     # length of used handshake randoms for active fingerprinting protection, zero to disable
     conf_dict.setdefault("REPLAY_CHECK_LEN", 65536)
 
+    # accept clients with bad clocks. This reduces the protection against replay attacks
+    conf_dict.setdefault("IGNORE_TIME_SKEW", False)
+
     # length of last client ip addresses for logging
     conf_dict.setdefault("CLIENT_IPS_LEN", 131072)
 
@@ -1110,11 +1113,15 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
 
         timestamp = int.from_bytes(xored_digest[-4:], "little")
         client_time_is_ok = TIME_SKEW_MIN < time.time() - timestamp < TIME_SKEW_MAX
+
         # some clients fail to read unix time and send the time since boot instead
         client_time_is_small = timestamp < 60*60*24*1000
-        if not client_time_is_ok and not is_time_skewed and not client_time_is_small:
+        accept_bad_time = config.IGNORE_TIME_SKEW or is_time_skewed or client_time_is_small
+
+        if not client_time_is_ok and not accept_bad_time:
             last_clients_with_time_skew[peer[0]] = (time.time() - timestamp) // 60
             continue
+
 
         http_data = myrandom.getrandbytes(fake_cert_len)
 
