@@ -126,6 +126,15 @@ def init_config():
     conf_dict.setdefault("USERS", {"tg":  "00000000000000000000000000000000"})
     conf_dict["AD_TAG"] = bytes.fromhex(conf_dict.get("AD_TAG", ""))
 
+    for user, secret in conf_dict["USERS"].items():
+        if not re.fullmatch("[0-9a-fA-F]{32}", secret):
+            fixed_secret = re.sub(r"[^0-9a-fA-F]", "", secret).zfill(32)[:32]
+
+            print_err("Bad secret for user %s, should be 32 hex chars, got %s. " % (user, secret))
+            print_err("Changing it to %s" % fixed_secret)
+
+            conf_dict["USERS"][user] = fixed_secret
+
     # load advanced settings
 
     # use middle proxy, necessary to show ad
