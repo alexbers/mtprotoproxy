@@ -1100,14 +1100,14 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     tls_extensions = b"\x00\x2e" + b"\x00\x33\x00\x24" + b"\x00\x1d\x00\x20"
     tls_extensions += gen_x25519_public_key() + b"\x00\x2b\x00\x02\x03\x04"
 
-    digest = handshake[DIGEST_POS: DIGEST_POS + DIGEST_LEN]
+    digest = handshake[DIGEST_POS:DIGEST_POS+DIGEST_LEN]
 
     if digest[:DIGEST_HALFLEN] in used_handshakes:
         last_clients_with_same_handshake[peer[0]] += 1
         return False
 
     sess_id_len = handshake[SESSION_ID_LEN_POS]
-    sess_id = handshake[SESSION_ID_POS: SESSION_ID_POS + sess_id_len]
+    sess_id = handshake[SESSION_ID_POS:SESSION_ID_POS+sess_id_len]
 
     for user in config.USERS:
         secret = bytes.fromhex(config.USERS[user])
