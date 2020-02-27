@@ -994,6 +994,7 @@ def gen_x25519_public_key():
 
 
 async def connect_reader_to_writer(reader, writer):
+    BUF_SIZE = 8192
     try:
         while True:
             data = await reader.read(BUF_SIZE)
