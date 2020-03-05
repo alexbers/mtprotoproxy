@@ -1235,9 +1235,11 @@ async def handle_handshake(reader, writer):
         return False
 
     peer = writer.get_extra_info("peername")[:2]
+    if not peer:
+        peer = ("unknown ip", 0)
 
     if config.PROXY_PROTOCOL:
-        ip = peer[0] if peer else "unknown address"
+        ip = peer[0] if peer else "unknown ip"
         peer = await handle_proxy_protocol(reader, peer)
         if not peer:
             print_err("Client from %s sent bad proxy protocol headers" % ip)
