@@ -44,7 +44,7 @@ if [ "$choice" = "1" ]; then
 		if [ ! -n "$domain" ]; then
 			echo "使用默认域名: www.cloudflare.com"
 			sed -i "s/# TLS_DOMAIN = \"www.google.com\"/TLS_DOMAIN = \"www.cloudflare.com\"/g" /root/mtprotoproxy/config.py
-			$domain="www.cloudflare.com"
+			domain='www.cloudflare.com'
 			break
 		else
 			http_code=$(curl -I -m 10 -o /dev/null -s -w %{http_code} $domain)
@@ -61,7 +61,7 @@ if [ "$choice" = "1" ]; then
 	read adtag
 		sed -i "s/# AD_TAG = \"3c09c680b76ee91a4c25ad51f742267d\"/AD_TAG = \"$adtag\"/g" /root/mtprotoproxy/config.py
 	
-	echo "请确认配置是否有误,无误请回车"
+	echo "请确认配置是否有误"
 	echo "--------------------"
 	echo "Port: 443"
 	echo "Fake TLS domain: $domain"
@@ -73,7 +73,8 @@ if [ "$choice" = "1" ]; then
 	IPAddress=$(curl -sSL https://www.bt.cn/Api/getIpAddress)
 	#计算域名hex值
 	hexxxxxx=$(xxd -pu <<< "$domain")
-	HEXVAL=$(xxd -pu <<< "$domain")
+	hexvel=$(xxd -pu <<< "$domain")
+	domainhex=${hexvel%0a}
 	docker-compose up -d
 	clear
 	echo "--------------------"
