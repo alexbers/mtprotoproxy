@@ -1722,6 +1722,7 @@ def make_metrics_pkt(metrics):
 
     pkt_header_list = []
     pkt_header_list.append("HTTP/1.1 200 OK")
+    pkt_header_list.append("Connection: close")
     pkt_header_list.append("Content-Length: %d" % len(pkt_body))
     pkt_header_list.append("Content-Type: text/plain; version=0.0.4; charset=utf-8")
     pkt_header_list.append("Date: %s" % time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime()))
