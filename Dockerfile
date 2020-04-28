@@ -1,6 +1,6 @@
 FROM python:3.8-slim-buster
 
-RUN apt-get update && apt-get install -y libcap2-bin && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install --no-install-recommends -y libcap2-bin && rm -rf /var/lib/apt/lists/*
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/python3.8
 
 RUN pip3 --no-cache-dir install cryptography uvloop
