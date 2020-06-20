@@ -7,6 +7,7 @@ services:
     volumes:
         - ./config.py:/home/tgproxy/config.py
         - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
+        - /etc/localtime:/etc/localtime:ro
     logging:
         driver: "json-file"
         options:
