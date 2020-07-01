@@ -2107,12 +2107,12 @@ def print_tg_info():
             print("Since you have TLS only mode enabled the best port is 443", flush=True)
         print_default_warning = True
 
-    if config.MY_DOMAIN:
+    if not config.MY_DOMAIN:
         ip_addrs = [ip for ip in my_ip_info.values() if ip]
         if not ip_addrs:
             ip_addrs = ["YOUR_IP"]
     else:
-        ip_addrs = ["config.MY_DOMAIN"]
+        ip_addrs = [config.MY_DOMAIN]
 
     proxy_links = []
 
