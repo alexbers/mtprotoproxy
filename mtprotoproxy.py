@@ -1051,7 +1051,9 @@ async def connect_reader_to_writer(reader, writer):
         pass
 
 
-async def handle_bad_client(reader_clt, writer_clt, handshake):
+async def handle_bad_client(reader_clt, writer_clt, handshake, peer):
+    logger.debug("%s:%s Bad TLS handshake detected; proxying to the MASK_HOST", *peer)
+
     BUF_SIZE = 8192
     CONNECT_TIMEOUT = 5
 
@@ -1113,6 +1115,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     finally:
         if writer_srv is not None:
             writer_srv.transport.abort()
+            logger.debug("%s:%s Proxying to the MASK_HOST finished; dropped connection", *peer)
 
 
 async def handle_fake_tls_handshake(handshake, reader, writer, peer):
@@ -1279,13 +1282,14 @@ async def handle_handshake(reader, writer):
         peer = ("unknown ip", 0)
 
     if config.PROXY_PROTOCOL:
-        ip = peer[0] if peer else "unknown ip"
+        old_peer = peer
         peer = await handle_proxy_protocol(reader, peer)
         if not peer:
-            logger.error("Client from %s sent bad proxy protocol headers", ip)
-            await handle_bad_client(reader, writer, None)
+            logger.info("%s:%s Client sent bad proxy protocol headers", *old_peer)
+            await handle_bad_client(reader, writer, None, old_peer)
             return False
 
+    logger.debug("%s:%s TLS: Initial packet received", *peer)
     is_tls_handshake = True
     handshake = b""
     for expected_byte in TLS_START_BYTES:
@@ -1294,18 +1298,19 @@ async def handle_handshake(reader, writer):
             is_tls_handshake = False
             break
 
+    logger.debug("%s:%s TLS: Handshake starting", *peer)
     if is_tls_handshake:
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - len(handshake))
         tls_handshake_result = await handle_fake_tls_handshake(handshake, reader, writer, peer)
 
         if not tls_handshake_result:
-            await handle_bad_client(reader, writer, handshake)
+            await handle_bad_client(reader, writer, handshake, peer)
             return False
         reader, writer = tls_handshake_result
         handshake = await reader.readexactly(HANDSHAKE_LEN)
     else:
         if not config.MODES["classic"] and not config.MODES["secure"]:
-            await handle_bad_client(reader, writer, handshake)
+            await handle_bad_client(reader, writer, handshake, peer)
             return False
         handshake += await reader.readexactly(HANDSHAKE_LEN - len(handshake))
 
@@ -1316,7 +1321,7 @@ async def handle_handshake(reader, writer):
 
     if dec_prekey_and_iv in used_handshakes:
         last_clients_with_same_handshake[peer[0]] += 1
-        await handle_bad_client(reader, writer, handshake)
+        await handle_bad_client(reader, writer, handshake, peer)
         return False
 
     for user in config.USERS:
@@ -1359,9 +1364,13 @@ async def handle_handshake(reader, writer):
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
+
+        logger.debug("%s:%s [%s] TLS handshake finished with user", *peer, user)
+
         return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv, peer
 
-    await handle_bad_client(reader, writer, handshake)
+    logger.debug("%s:%s TLS handshake failed", *peer)
+    await handle_bad_client(reader, writer, handshake, peer)
     return False
 
 
@@ -1712,9 +1721,13 @@ async def handle_client(reader_clt, writer_clt):
     )
 
     if (not tcp_limit_hit) and (not user_expired) and (not user_data_quota_hit):
+        logger.debug("%s:%s/%s Telegram connection initiated", *peer, user)
+
         start = time.time()
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
         update_durations(time.time() - start)
+
+        logger.debug("%s:%s/%s Telegram connection dropped", *peer, user)
 
     update_user_stats(user, curr_connects=-1)
 
@@ -2117,8 +2130,18 @@ def init_ip_info():
     my_ip_info["ipv4"] = get_ip_from_url(IPV4_URL1) or get_ip_from_url(IPV4_URL2)
     my_ip_info["ipv6"] = get_ip_from_url(IPV6_URL1) or get_ip_from_url(IPV6_URL2)
 
+    if my_ip_info["ipv6"]:
+        logger.info("Discovered IPv6 (%s)" % my_ip_info["ipv6"])
+
+    if my_ip_info["ipv4"]:
+        logger.info("Discovered IPv4 (%s)", my_ip_info["ipv4"])
+
     if my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]):
-        logger.info("IPv6 found, using it for external communication")
+        protocol, main_ip = "IPv6", my_ip_info["ipv6"]
+    else:
+        protocol, main_ip = "IPv4", my_ip_info["ipv4"]
+
+    logger.info("Using %s:%s (%s) for external communication", main_ip, config.PORT, protocol)
 
     if config.USE_MIDDLE_PROXY:
         if not my_ip_info["ipv4"] and not my_ip_info["ipv6"]:
@@ -2211,6 +2234,7 @@ def setup_asyncio():
 def setup_signals():
     if hasattr(signal, 'SIGUSR1'):
         def debug_signal(signum, frame):
+            logger.info("Received SIGUSR1")
             import pdb
             pdb.set_trace()
 
@@ -2218,6 +2242,7 @@ def setup_signals():
 
     if hasattr(signal, 'SIGUSR2'):
         def reload_signal(signum, frame):
+            logger.info("Received SIGUSR2, reloading configuration")
             init_config()
             ensure_users_in_user_stats()
             apply_upstream_proxy_settings()
@@ -2365,6 +2390,8 @@ def main():
         loop.run_forever()
     except KeyboardInterrupt:
         pass
+
+    logger.info("SIGINT received, quitting")
 
     if hasattr(asyncio, "all_tasks"):
         tasks = asyncio.all_tasks(loop)
