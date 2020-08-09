@@ -195,6 +195,9 @@ def init_config():
 
     # the next host to forward bad clients
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
+    
+    # set the home domain for the proxy, has an influence only on the log message
+    conf_dict.setdefault("MY_DOMAIN", False)
 
     # the next host's port to forward bad clients
     conf_dict.setdefault("MASK_PORT", 443)
@@ -2104,9 +2107,12 @@ def print_tg_info():
             print("Since you have TLS only mode enabled the best port is 443", flush=True)
         print_default_warning = True
 
-    ip_addrs = [ip for ip in my_ip_info.values() if ip]
-    if not ip_addrs:
-        ip_addrs = ["YOUR_IP"]
+    if not config.MY_DOMAIN:
+        ip_addrs = [ip for ip in my_ip_info.values() if ip]
+        if not ip_addrs:
+            ip_addrs = ["YOUR_IP"]
+    else:
+        ip_addrs = [config.MY_DOMAIN]
 
     proxy_links = []
 
