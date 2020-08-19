@@ -172,8 +172,8 @@ def init_config():
         if not re.fullmatch("[0-9a-fA-F]{32}", secret):
             fixed_secret = re.sub(r"[^0-9a-fA-F]", "", secret).zfill(32)[:32]
 
-            logger.error("Bad secret for user %s, should be 32 hex chars, got %s.", user, secret)
-            logger.error("Changing it to %s", fixed_secret)
+            logger.error("Bad secret for user %s, should be 32 hex chars, got %s.\n"
+                         "Changing it to %s", user, secret, fixed_secret)
 
             conf_dict["USERS"][user] = fixed_secret
 
@@ -216,13 +216,13 @@ def init_config():
         modes["tls"] = True
 
     if legacy_warning:
-        logger.error("Legacy options SECURE_ONLY or TLS_ONLY detected")
-        logger.error("Please use MODES in your config instead:")
-        logger.error("MODES = {")
-        logger.error('    "classic": %s,', modes["classic"])
-        logger.error('    "secure": %s,', modes["secure"])
-        logger.error('    "tls": %s', modes["tls"])
-        logger.error("}")
+        logger.error("Legacy options SECURE_ONLY or TLS_ONLY detected\n"
+                     "Please use MODES in your config instead:\n"
+                     "MODES = {\n"
+                     '    "classic": %s,\n'
+                     '    "secure": %s,\n'
+                     '    "tls": %s\n'
+                     "}", modes["classic"], modes["secure"], modes["tls"])
 
     conf_dict["MODES"] = modes
 
@@ -399,8 +399,8 @@ def try_use_pycrypto_or_pycryptodome_module():
 def use_slow_bundled_cryptography_module():
     import pyaes
 
-    msg = "To make the program a *lot* faster, please install cryptography module: "
-    msg += "pip install cryptography\n"
+    msg = "To make the program a *lot* faster, please install cryptography module:\n"
+    msg += "pip install cryptography"
     logger.warning(msg)
 
     class BundledEncryptorAdapter:
@@ -1880,20 +1880,20 @@ async def stats_printer():
                 stat["msgs_from_client"] + stat["msgs_to_client"])
 
         if last_client_ips:
-            stats_logger.info("New IPs:")
-            for ip in last_client_ips:
-                stats_logger.info(ip)
+            stats_logger.info("New IPs:\n%s", "\n".join(last_client_ips))
             last_client_ips.clear()
 
         if last_clients_with_time_skew:
-            stats_logger.info("Clients with time skew (possible replay-attackers):")
+            msg = "Clients with time skew (possible replay-attackers):\n"
             for ip, skew_minutes in last_clients_with_time_skew.items():
-                stats_logger.info("%s, clocks were %d minutes behind" , ip, skew_minutes)
+                msg += "%s, clocks were %d minutes behind\n" % ip, skew_minutes
+            stats_logger.info(msg)
             last_clients_with_time_skew.clear()
         if last_clients_with_same_handshake:
-            stats_logger.info("Clients with duplicate handshake (likely replay-attackers):")
+            msg = "Clients with duplicate handshake (likely replay-attackers):\n"
             for ip, times in last_clients_with_same_handshake.items():
-                stats_logger.info("%s, %d times", ip, times)
+                msg += "%s, %d times\n" % (ip, times)
+            stats_logger.info(msg)
             last_clients_with_same_handshake.clear()
 
 
@@ -2025,10 +2025,10 @@ async def get_srv_time():
                 now_time = datetime.datetime.utcnow()
                 is_time_skewed = (now_time-srv_time).total_seconds() > MAX_TIME_SKEW
                 if is_time_skewed and config.USE_MIDDLE_PROXY and not disable_middle_proxy:
-                    logger.error("Time skew detected, probably your server's clock isn't set up properly")
-                    logger.error("Telegram clock: %s", srv_time)
-                    logger.error("Your clock: %s", now_time)
-                    logger.error("Resuming without advertising and disabling replay attack protector")
+                    logger.error("Time skew detected, probably your server's clock isn't set up properly\n"
+                                 "Telegram clock: %s\n"
+                                 "Your clock: %s\n"
+                                 "Resuming without advertising and disabling replay attack protector", srv_time, now_time)
 
                     disable_middle_proxy = True
                     want_to_reenable_advertising = True
@@ -2201,14 +2201,14 @@ def print_tg_info():
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef",
                       "00000000000000000000000000000001"]:
-            stats_logger.warning("The default secret %s is used, this is not recommended", secret)
             random_secret = "".join(myrandom.choice("0123456789abcdef") for i in range(32))
-            stats_logger.warning("You can change it to this random secret: %s", random_secret)
+            logger.warning("The default secret %s is used, this is not recommended\n"
+                           "You can change it to this random secret: %s", secret, random_secret)
             print_default_warning = True
 
     if config.TLS_DOMAIN == "www.google.com":
-        logger.warning("The default TLS_DOMAIN www.google.com is used, this is not recommended")
-        logger.warning("You should use random existing domain instead, bad clients are proxied there")
+        logger.warning("The default TLS_DOMAIN www.google.com is used, this is not recommended\n"
+                       "You should use random existing domain instead, bad clients are proxied there")
         print_default_warning = True
 
     if print_default_warning:
