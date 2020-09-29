@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import asyncio
+import logging
+import logging.config
 import socket
 import urllib.parse
 import urllib.request
@@ -19,6 +21,7 @@ import signal
 import os
 import stat
 import traceback
+from typing import Optional
 
 
 TG_DATACENTER_PORT = 443
@@ -96,11 +99,13 @@ proxy_links = []
 stats = collections.Counter()
 user_stats = collections.defaultdict(collections.Counter)
 
+logger: Optional[logging.Logger] = None
+
 config = {}
 
 
 def init_config():
-    global config
+    global config, logger
     # we use conf_dict to protect the original config from exceptions when reloading
     if len(sys.argv) < 2:
         conf_dict = runpy.run_module("config")
@@ -122,6 +127,43 @@ def init_config():
 
     conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
+    logging.config.dictConfig(conf_dict.get('LOGGING_CONFIG', {
+        'version': 1,
+        'disable_existing_loggers': True,
+        'formatters': {
+            'standard': {
+                'format': '%(asctime)s [%(levelname)s]: %(message)s'
+            },
+        },
+        'handlers': {
+            'default': {
+                'level': 'INFO',
+                'formatter': 'standard',
+                'class': 'logging.StreamHandler',
+                'stream': 'ext://sys.stdout',
+            },
+        },
+        'loggers': {
+            '': {  # root logger
+                'handlers': ['default'],
+                'level': 'WARNING',
+                'propagate': False
+            },
+            '__main__': {
+                'handlers': ['default'],
+                'level': 'INFO',
+                'propagate': False
+            },
+            'stats': {
+                'handlers': ['default'],
+                'level': 'INFO',
+                'propagate': False
+            },
+        }
+    }))
+
+    logger = logging.getLogger(__name__)
+
     conf_dict.setdefault("PORT", 3256)
     conf_dict.setdefault("USERS", {"tg":  "00000000000000000000000000000000"})
     conf_dict["AD_TAG"] = bytes.fromhex(conf_dict.get("AD_TAG", ""))
@@ -130,8 +172,8 @@ def init_config():
         if not re.fullmatch("[0-9a-fA-F]{32}", secret):
             fixed_secret = re.sub(r"[^0-9a-fA-F]", "", secret).zfill(32)[:32]
 
-            print_err("Bad secret for user %s, should be 32 hex chars, got %s. " % (user, secret))
-            print_err("Changing it to %s" % fixed_secret)
+            logger.error("Bad secret for user %s, should be 32 hex chars, got %s.\n"
+                         "Changing it to %s", user, secret, fixed_secret)
 
             conf_dict["USERS"][user] = fixed_secret
 
@@ -170,17 +212,17 @@ def init_config():
             modes["secure"] = False
 
     if not modes["classic"] and not modes["secure"] and not modes["tls"]:
-        print_err("No known modes enabled, enabling tls-only mode")
+        logger.error("No known modes enabled, enabling tls-only mode")
         modes["tls"] = True
 
     if legacy_warning:
-        print_err("Legacy options SECURE_ONLY or TLS_ONLY detected")
-        print_err("Please use MODES in your config instead:")
-        print_err("MODES = {")
-        print_err('    "classic": %s,' % modes["classic"])
-        print_err('    "secure": %s,' % modes["secure"])
-        print_err('    "tls": %s' % modes["tls"])
-        print_err("}")
+        logger.error("Legacy options SECURE_ONLY or TLS_ONLY detected\n"
+                     "Please use MODES in your config instead:\n"
+                     "MODES = {\n"
+                     '    "classic": %s,\n'
+                     '    "secure": %s,\n'
+                     '    "tls": %s\n'
+                     "}", modes["classic"], modes["secure"], modes["tls"])
 
     conf_dict["MODES"] = modes
 
@@ -195,7 +237,7 @@ def init_config():
 
     # the next host to forward bad clients
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
-    
+
     # set the home domain for the proxy, has an influence only on the log message
     conf_dict.setdefault("MY_DOMAIN", False)
 
@@ -300,7 +342,7 @@ def apply_upstream_proxy_settings():
     # apply socks settings in place
     if config.SOCKS5_HOST and config.SOCKS5_PORT:
         import socks
-        print_err("Socket-proxy mode activated, it is incompatible with advertising and uvloop")
+        logger.info("Socket-proxy mode activated, it is incompatible with advertising and uvloop")
         socks.set_default_proxy(socks.PROXY_TYPE_SOCKS5, config.SOCKS5_HOST, config.SOCKS5_PORT,
                                 username=config.SOCKS5_USER, password=config.SOCKS5_PASS)
         if not hasattr(socket, "origsocket"):
@@ -357,9 +399,9 @@ def try_use_pycrypto_or_pycryptodome_module():
 def use_slow_bundled_cryptography_module():
     import pyaes
 
-    msg = "To make the program a *lot* faster, please install cryptography module: "
-    msg += "pip install cryptography\n"
-    print(msg, flush=True, file=sys.stderr)
+    msg = "To make the program a *lot* faster, please install cryptography module:\n"
+    msg += "pip install cryptography"
+    logger.warning(msg)
 
     class BundledEncryptorAdapter:
         __slots__ = ('mode', )
@@ -392,10 +434,6 @@ except ImportError:
         create_aes_ctr, create_aes_cbc = try_use_pycrypto_or_pycryptodome_module()
     except ImportError:
         create_aes_ctr, create_aes_cbc = use_slow_bundled_cryptography_module()
-
-
-def print_err(*params):
-    print(*params, file=sys.stderr, flush=True)
 
 
 def ensure_users_in_user_stats():
@@ -598,12 +636,12 @@ class FakeTLSStreamReader(LayeredStreamReaderBase):
                 return b""
 
             if tls_rec_type not in [b"\x14", b"\x17"]:
-                print_err("BUG: bad tls type %s in FakeTLSStreamReader" % tls_rec_type)
+                logger.error("BUG: bad tls type %s in FakeTLSStreamReader", tls_rec_type)
                 return b""
 
             version = await self.upstream.readexactly(2)
             if version != b"\x03\x03":
-                print_err("BUG: unknown version %s in FakeTLSStreamReader" % version)
+                logger.error("BUG: unknown version %s in FakeTLSStreamReader", version)
                 return b""
 
             data_len = int.from_bytes(await self.upstream.readexactly(2), "big")
@@ -685,8 +723,7 @@ class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
 
     def write(self, data, extra={}):
         if len(data) % self.block_size != 0:
-            print_err("BUG: writing %d bytes not aligned to block size %d" % (
-                      len(data), self.block_size))
+            logger.error("BUG: writing %d bytes not aligned to block size %d", len(data), self.block_size)
             return 0
         q = self.encryptor.encrypt(data)
         return self.upstream.write(q)
@@ -709,13 +746,13 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
 
         len_is_bad = (msg_len % len(PADDING_FILLER) != 0)
         if not MIN_MSG_LEN <= msg_len <= MAX_MSG_LEN or len_is_bad:
-            print_err("msg_len is bad, closing connection", msg_len)
+            logger.error("msg_len is bad (%d), closing connection", msg_len)
             return b""
 
         msg_seq_bytes = await self.upstream.readexactly(4)
         msg_seq = int.from_bytes(msg_seq_bytes, "little", signed=True)
         if msg_seq != self.seq_no:
-            print_err("unexpected seq_no")
+            logger.error("unexpected seq_no")
             return b""
 
         self.seq_no += 1
@@ -782,7 +819,7 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
         LARGE_PKT_BORGER = 256 ** 3
 
         if len(data) % 4 != 0:
-            print_err("BUG: MTProtoFrameStreamWriter attempted to send msg with len", len(data))
+            logger.error("BUG: MTProtoFrameStreamWriter attempted to send msg with len %d", len(data))
             return 0
 
         if extra.get("SIMPLE_ACK"):
@@ -795,7 +832,7 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
         elif len_div_four < LARGE_PKT_BORGER:
             return self.upstream.write(b'\x7f' + int.to_bytes(len_div_four, 3, 'little') + data)
         else:
-            print_err("Attempted to send too large pkt len =", len(data))
+            logger.error("Attempted to send too large packet (len=%d)", len(data))
             return 0
 
 
@@ -886,7 +923,7 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
             conn_id, confirm = data[4:12], data[12:16]
             return confirm, {"SIMPLE_ACK": True}
 
-        print_err("unknown rpc ans type:", ans_type)
+        logger.error("unknown rpc ans type: %s", ans_type)
         return b""
 
 
@@ -929,7 +966,7 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         FLAG_QUICKACK = 0x80000000
 
         if len(msg) % 4 != 0:
-            print_err("BUG: attempted to send msg with len %d" % len(msg))
+            logger.error("BUG: attempted to send msg with len %d", len(msg))
             return 0
 
         flags = FLAG_HAS_AD_TAG | FLAG_MAGIC | FLAG_EXTMODE2
@@ -1014,7 +1051,9 @@ async def connect_reader_to_writer(reader, writer):
         pass
 
 
-async def handle_bad_client(reader_clt, writer_clt, handshake):
+async def handle_bad_client(reader_clt, writer_clt, handshake, peer):
+    logger.debug("%s:%s Bad TLS handshake detected; proxying to the MASK_HOST", *peer)
+
     BUF_SIZE = 8192
     CONNECT_TIMEOUT = 5
 
@@ -1076,6 +1115,7 @@ async def handle_bad_client(reader_clt, writer_clt, handshake):
     finally:
         if writer_srv is not None:
             writer_srv.transport.abort()
+            logger.debug("%s:%s Proxying to the MASK_HOST finished; dropped connection", *peer)
 
 
 async def handle_fake_tls_handshake(handshake, reader, writer, peer):
@@ -1242,13 +1282,14 @@ async def handle_handshake(reader, writer):
         peer = ("unknown ip", 0)
 
     if config.PROXY_PROTOCOL:
-        ip = peer[0] if peer else "unknown ip"
+        old_peer = peer
         peer = await handle_proxy_protocol(reader, peer)
         if not peer:
-            print_err("Client from %s sent bad proxy protocol headers" % ip)
-            await handle_bad_client(reader, writer, None)
+            logger.info("%s:%s Client sent bad proxy protocol headers", *old_peer)
+            await handle_bad_client(reader, writer, None, old_peer)
             return False
 
+    logger.debug("%s:%s TLS: Initial packet received", *peer)
     is_tls_handshake = True
     handshake = b""
     for expected_byte in TLS_START_BYTES:
@@ -1257,18 +1298,19 @@ async def handle_handshake(reader, writer):
             is_tls_handshake = False
             break
 
+    logger.debug("%s:%s TLS: Handshake starting", *peer)
     if is_tls_handshake:
         handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - len(handshake))
         tls_handshake_result = await handle_fake_tls_handshake(handshake, reader, writer, peer)
 
         if not tls_handshake_result:
-            await handle_bad_client(reader, writer, handshake)
+            await handle_bad_client(reader, writer, handshake, peer)
             return False
         reader, writer = tls_handshake_result
         handshake = await reader.readexactly(HANDSHAKE_LEN)
     else:
         if not config.MODES["classic"] and not config.MODES["secure"]:
-            await handle_bad_client(reader, writer, handshake)
+            await handle_bad_client(reader, writer, handshake, peer)
             return False
         handshake += await reader.readexactly(HANDSHAKE_LEN - len(handshake))
 
@@ -1279,7 +1321,7 @@ async def handle_handshake(reader, writer):
 
     if dec_prekey_and_iv in used_handshakes:
         last_clients_with_same_handshake[peer[0]] += 1
-        await handle_bad_client(reader, writer, handshake)
+        await handle_bad_client(reader, writer, handshake, peer)
         return False
 
     for user in config.USERS:
@@ -1322,9 +1364,13 @@ async def handle_handshake(reader, writer):
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
+
+        logger.debug("%s:%s [%s] TLS handshake finished with user", *peer, user)
+
         return reader, writer, proto_tag, user, dc_idx, enc_key + enc_iv, peer
 
-    await handle_bad_client(reader, writer, handshake)
+    logger.debug("%s:%s TLS handshake failed", *peer)
+    await handle_bad_client(reader, writer, handshake, peer)
     return False
 
 
@@ -1352,13 +1398,13 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
     try:
         reader_tgt, writer_tgt = await tg_connection_pool.get_connection(dc, TG_DATACENTER_PORT)
     except ConnectionRefusedError as E:
-        print_err("Got connection refused while trying to connect to", dc, TG_DATACENTER_PORT)
+        logger.error("Got connection refused while trying to connect to", dc, TG_DATACENTER_PORT)
         return False
     except ConnectionAbortedError as E:
-        print_err("The Telegram server connection is bad: %d (%s %s) %s" % (dc_idx, addr, port, E))
+        logger.error("The Telegram server connection is bad: %d (%s:%s) %s", dc_idx, dc, TG_DATACENTER_PORT, E)
         return False
     except (OSError, asyncio.TimeoutError) as E:
-        print_err("Unable to connect to", dc, TG_DATACENTER_PORT)
+        logger.error("Unable to connect to %s:%s", dc, TG_DATACENTER_PORT)
         return False
 
     while True:
@@ -1546,13 +1592,13 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
         ret = await tg_connection_pool.get_connection(addr, port, middleproxy_handshake)
         reader_tgt, writer_tgt, my_ip, my_port = ret
     except ConnectionRefusedError as E:
-        print_err("The Telegram server %d (%s %s) is refusing connections" % (dc_idx, addr, port))
+        logger.error("The Telegram server %d (%s %s) is refusing connections", dc_idx, addr, port)
         return False
     except ConnectionAbortedError as E:
-        print_err("The Telegram server connection is bad: %d (%s %s) %s" % (dc_idx, addr, port, E))
+        logger.error("The Telegram server connection is bad: %d (%s %s) %s", dc_idx, addr, port, E)
         return False
     except (OSError, asyncio.TimeoutError) as E:
-        print_err("Unable to connect to the Telegram server %d (%s %s)" % (dc_idx, addr, port))
+        logger.error("Unable to connect to the Telegram server %d (%s %s)", dc_idx, addr, port)
         return False
 
     writer_tgt = ProxyReqStreamWriter(writer_tgt, cl_ip, cl_port, my_ip, my_port, proto_tag)
@@ -1583,7 +1629,7 @@ async def tg_connect_reader_to_writer(rd, wr, user, rd_buf_size, is_upstream):
                 wr.write(data, extra)
                 await wr.drain()
     except (OSError, asyncio.IncompleteReadError) as e:
-        # print_err(e)
+        # logger.error(e)
         pass
 
 
@@ -1675,9 +1721,13 @@ async def handle_client(reader_clt, writer_clt):
     )
 
     if (not tcp_limit_hit) and (not user_expired) and (not user_data_quota_hit):
+        logger.debug("%s:%s/%s Telegram connection initiated", *peer, user)
+
         start = time.time()
         await asyncio.wait([task_tg_to_clt, task_clt_to_tg], return_when=asyncio.FIRST_COMPLETED)
         update_durations(time.time() - start)
+
+        logger.debug("%s:%s/%s Telegram connection dropped", *peer, user)
 
     update_user_stats(user, curr_connects=-1)
 
@@ -1816,35 +1866,34 @@ async def stats_printer():
     global last_clients_with_time_skew
     global last_clients_with_same_handshake
 
+    stats_logger = logging.getLogger('stats')
+
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
 
-        print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
+        stats_logger.info("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
         for user, stat in user_stats.items():
-            print("%s: %d connects (%d current), %.2f MB, %d msgs" % (
+            stats_logger.info(
+                "%s: %d connects (%d current), %.2f MB, %d msgs",
                 user, stat["connects"], stat["curr_connects"],
                 (stat["octets_from_client"] + stat["octets_to_client"]) / 1000000,
-                stat["msgs_from_client"] + stat["msgs_to_client"]))
-        print(flush=True)
+                stat["msgs_from_client"] + stat["msgs_to_client"])
 
         if last_client_ips:
-            print("New IPs:")
-            for ip in last_client_ips:
-                print(ip)
-            print(flush=True)
+            stats_logger.info("New IPs:\n%s", "\n".join(last_client_ips))
             last_client_ips.clear()
 
         if last_clients_with_time_skew:
-            print("Clients with time skew (possible replay-attackers):")
+            msg = "Clients with time skew (possible replay-attackers):\n"
             for ip, skew_minutes in last_clients_with_time_skew.items():
-                print("%s, clocks were %d minutes behind" % (ip, skew_minutes))
-            print(flush=True)
+                msg += "%s, clocks were %d minutes behind\n" % ip, skew_minutes
+            stats_logger.info(msg)
             last_clients_with_time_skew.clear()
         if last_clients_with_same_handshake:
-            print("Clients with duplicate handshake (likely replay-attackers):")
+            msg = "Clients with duplicate handshake (likely replay-attackers):\n"
             for ip, times in last_clients_with_same_handshake.items():
-                print("%s, %d times" % (ip, times))
-            print(flush=True)
+                msg += "%s, %d times\n" % (ip, times)
+            stats_logger.info(msg)
             last_clients_with_same_handshake.clear()
 
 
@@ -1938,25 +1987,20 @@ async def get_mask_host_cert_len():
             cert = await asyncio.wait_for(task, timeout=GET_CERT_TIMEOUT)
             if cert:
                 if len(cert) < MIN_CERT_LEN:
-                    msg = ("The MASK_HOST %s returned several TLS records, this is not supported" %
-                           config.MASK_HOST)
-                    print_err(msg)
+                    logger.error("The MASK_HOST %s returned several TLS records, this is not supported",
+                                 config.MASK_HOST)
                 elif len(cert) != fake_cert_len:
                     fake_cert_len = len(cert)
-                    print_err("Got cert from the MASK_HOST %s, its length is %d" %
-                              (config.MASK_HOST, fake_cert_len))
+                    logger.info("Received a TLS certificate from the MASK_HOST %s with the length of %d",
+                                config.MASK_HOST, fake_cert_len)
             else:
-                print_err("The MASK_HOST %s is not TLS 1.3 host, this is not recommended" %
-                          config.MASK_HOST)
+                logger.error("The MASK_HOST %s is not a TLS 1.3 host, this is not recommended", config.MASK_HOST)
         except ConnectionRefusedError:
-            print_err("The MASK_HOST %s is refusing connections, this is not recommended" %
-                      config.MASK_HOST)
+            logger.error("The MASK_HOST %s is refusing connections, this is not recommended", config.MASK_HOST)
         except (TimeoutError, asyncio.TimeoutError):
-            print_err("Got timeout while getting TLS handshake from MASK_HOST %s" %
-                      config.MASK_HOST)
-        except Exception as E:
-            print_err("Failed to connect to MASK_HOST %s: %s" % (
-                      config.MASK_HOST, E))
+            logger.error("Timeout while TLS handshaking with MASK_HOST %s", config.MASK_HOST)
+        except Exception:
+            logger.exception("Failed to connect to MASK_HOST %s: %s", config.MASK_HOST, E)
 
         await asyncio.sleep(config.GET_CERT_LEN_PERIOD)
 
@@ -1981,19 +2025,19 @@ async def get_srv_time():
                 now_time = datetime.datetime.utcnow()
                 is_time_skewed = (now_time-srv_time).total_seconds() > MAX_TIME_SKEW
                 if is_time_skewed and config.USE_MIDDLE_PROXY and not disable_middle_proxy:
-                    print_err("Time skew detected, please set the clock")
-                    print_err("Server time:", srv_time, "your time:", now_time)
-                    print_err("Disabling advertising to continue serving")
-                    print_err("Putting down the shields against replay attacks")
+                    logger.error("Time skew detected, probably your server's clock isn't set up properly\n"
+                                 "Telegram clock: %s\n"
+                                 "Your clock: %s\n"
+                                 "Resuming without advertising and disabling replay attack protector", srv_time, now_time)
 
                     disable_middle_proxy = True
                     want_to_reenable_advertising = True
                 elif not is_time_skewed and want_to_reenable_advertising:
-                    print_err("Time is ok, reenabling advertising")
+                    logger.error("Time is set-up correctly, re-enabling advertising")
                     disable_middle_proxy = False
                     want_to_reenable_advertising = False
-        except Exception as E:
-            print_err("Error getting server time", E)
+        except Exception:
+            logger.exception("Error while fetching telegram server's time")
 
         await asyncio.sleep(config.GET_TIME_PERIOD)
 
@@ -2039,16 +2083,16 @@ async def update_middle_proxy_info():
             if not v4_proxies:
                 raise Exception("no proxy data")
             TG_MIDDLE_PROXIES_V4 = v4_proxies
-        except Exception as E:
-            print_err("Error updating middle proxy list:", E)
+        except Exception:
+            logger.exception("Error while updating middle proxy list")
 
         try:
             v6_proxies = await get_new_proxies(PROXY_INFO_ADDR_V6)
             if not v6_proxies:
                 raise Exception("no proxy data (ipv6)")
             TG_MIDDLE_PROXIES_V6 = v6_proxies
-        except Exception as E:
-            print_err("Error updating middle proxy list for IPv6:", E)
+        except Exception:
+            logger.exception("Error while updating middle proxy list for IPv6")
 
         try:
             headers, secret = await make_https_req(PROXY_SECRET_ADDR)
@@ -2056,9 +2100,9 @@ async def update_middle_proxy_info():
                 raise Exception("no secret")
             if secret != PROXY_SECRET:
                 PROXY_SECRET = secret
-                print_err("Middle proxy secret updated")
-        except Exception as E:
-            print_err("Error updating middle proxy secret, using old", E)
+                logger.info("Middle proxy secret updated")
+        except Exception:
+            logger.exception("Error while updating middle proxy secret, using the old one")
 
         await asyncio.sleep(config.PROXY_INFO_UPDATE_PERIOD)
 
@@ -2086,12 +2130,22 @@ def init_ip_info():
     my_ip_info["ipv4"] = get_ip_from_url(IPV4_URL1) or get_ip_from_url(IPV4_URL2)
     my_ip_info["ipv6"] = get_ip_from_url(IPV6_URL1) or get_ip_from_url(IPV6_URL2)
 
+    if my_ip_info["ipv6"]:
+        logger.info("Discovered IPv6 (%s)" % my_ip_info["ipv6"])
+
+    if my_ip_info["ipv4"]:
+        logger.info("Discovered IPv4 (%s)", my_ip_info["ipv4"])
+
     if my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]):
-        print_err("IPv6 found, using it for external communication")
+        protocol, main_ip = "IPv6", my_ip_info["ipv6"]
+    else:
+        protocol, main_ip = "IPv4", my_ip_info["ipv4"]
+
+    logger.info("Using %s:%s (%s) for external communication", main_ip, config.PORT, protocol)
 
     if config.USE_MIDDLE_PROXY:
         if not my_ip_info["ipv4"] and not my_ip_info["ipv6"]:
-            print_err("Failed to determine your ip, advertising disabled")
+            logger.warning("Failed to determine your ip, advertising disabled")
             disable_middle_proxy = True
 
 
@@ -2102,9 +2156,9 @@ def print_tg_info():
     print_default_warning = False
 
     if config.PORT == 3256:
-        print("The default port 3256 is used, this is not recommended", flush=True)
+        logger.warning("The default port 3256 is being used; this is not recommended")
         if not config.MODES["classic"] and not config.MODES["secure"]:
-            print("Since you have TLS only mode enabled the best port is 443", flush=True)
+            logger.warning("Since the 'TLS only' mode is enabled, the best port is 443")
         print_default_warning = True
 
     if not config.MY_DOMAIN:
@@ -2116,6 +2170,8 @@ def print_tg_info():
 
     proxy_links = []
 
+    stats_logger = logging.getLogger('stats')
+
     for user, secret in sorted(config.USERS.items(), key=lambda x: x[0]):
         for ip in ip_addrs:
             if config.MODES["classic"]:
@@ -2123,14 +2179,14 @@ def print_tg_info():
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 classic_link = "tg://proxy?{}".format(params_encodeded)
                 proxy_links.append({"user": user, "link": classic_link})
-                print("{}: {}".format(user, classic_link), flush=True)
+                stats_logger.info("{}: {}".format(user, classic_link))
 
             if config.MODES["secure"]:
                 params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 dd_link = "tg://proxy?{}".format(params_encodeded)
                 proxy_links.append({"user": user, "link": dd_link})
-                print("{}: {}".format(user, dd_link), flush=True)
+                stats_logger.info("{}: {}".format(user, dd_link))
 
             if config.MODES["tls"]:
                 tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
@@ -2141,24 +2197,22 @@ def print_tg_info():
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
                 tls_link = "tg://proxy?{}".format(params_encodeded)
                 proxy_links.append({"user": user, "link": tls_link})
-                print("{}: {}".format(user, tls_link), flush=True)
+                stats_logger.info("{}: {}".format(user, tls_link))
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef",
                       "00000000000000000000000000000001"]:
-            msg = "The default secret {} is used, this is not recommended".format(secret)
-            print(msg, flush=True)
             random_secret = "".join(myrandom.choice("0123456789abcdef") for i in range(32))
-            print("You can change it to this random secret:", random_secret, flush=True)
+            logger.warning("The default secret %s is used, this is not recommended\n"
+                           "You can change it to this random secret: %s", secret, random_secret)
             print_default_warning = True
 
     if config.TLS_DOMAIN == "www.google.com":
-        print("The default TLS_DOMAIN www.google.com is used, this is not recommended", flush=True)
-        msg = "You should use random existing domain instead, bad clients are proxied there"
-        print(msg, flush=True)
+        logger.warning("The default TLS_DOMAIN www.google.com is used, this is not recommended\n"
+                       "You should use random existing domain instead, bad clients are proxied there")
         print_default_warning = True
 
     if print_default_warning:
-        print_err("Warning: one or more default settings detected")
+        logger.error("Warning: one or more default settings detected")
 
 
 def setup_files_limit():
@@ -2167,7 +2221,7 @@ def setup_files_limit():
         soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
         resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
     except (ValueError, OSError):
-        print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
+        logger.error("Failed to increase the limit of opened files")
     except ImportError:
         pass
 
@@ -2180,6 +2234,7 @@ def setup_asyncio():
 def setup_signals():
     if hasattr(signal, 'SIGUSR1'):
         def debug_signal(signum, frame):
+            logger.info("Received SIGUSR1")
             import pdb
             pdb.set_trace()
 
@@ -2187,10 +2242,11 @@ def setup_signals():
 
     if hasattr(signal, 'SIGUSR2'):
         def reload_signal(signum, frame):
+            logger.info("Received SIGUSR2, reloading configuration")
             init_config()
             ensure_users_in_user_stats()
             apply_upstream_proxy_settings()
-            print("Config reloaded", flush=True, file=sys.stderr)
+            logger.info("Config reloaded")
             print_tg_info()
 
         signal.signal(signal.SIGUSR2, reload_signal)
@@ -2203,7 +2259,7 @@ def try_setup_uvloop():
     try:
         import uvloop
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-        print_err("Found uvloop, using it for optimal performance")
+        logger.info("Found uvloop, using it for optimal performance")
     except ImportError:
         pass
 
@@ -2334,6 +2390,8 @@ def main():
         loop.run_forever()
     except KeyboardInterrupt:
         pass
+
+    logger.info("SIGINT received, quitting")
 
     if hasattr(asyncio, "all_tasks"):
         tasks = asyncio.all_tasks(loop)
