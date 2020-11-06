@@ -20,7 +20,6 @@ import os
 import stat
 import traceback
 
-
 TG_DATACENTER_PORT = 443
 
 TG_DATACENTERS_V4 = [
@@ -78,7 +77,7 @@ PADDING_FILLER = b"\x04\x00\x00\x00"
 MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
-STAT_DURATION_BUCKETS = [0.1, 0.5, 1, 2, 5, 15, 60, 300, 600, 1800, 2**31 - 1]
+STAT_DURATION_BUCKETS = [0.1, 0.5, 1, 2, 5, 15, 60, 300, 600, 1800, 2 ** 31 - 1]
 
 my_ip_info = {"ipv4": None, "ipv6": None}
 used_handshakes = collections.OrderedDict()
@@ -123,7 +122,7 @@ def init_config():
     conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
     conf_dict.setdefault("PORT", 3256)
-    conf_dict.setdefault("USERS", {"tg":  "00000000000000000000000000000000"})
+    conf_dict.setdefault("USERS", {"tg": "00000000000000000000000000000000"})
     conf_dict["AD_TAG"] = bytes.fromhex(conf_dict.get("AD_TAG", ""))
 
     for user, secret in conf_dict["USERS"].items():
@@ -195,7 +194,7 @@ def init_config():
 
     # the next host to forward bad clients
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
-    
+
     # set the home domain for the proxy, has an influence only on the log message
     conf_dict.setdefault("MY_DOMAIN", False)
 
@@ -238,13 +237,13 @@ def init_config():
     conf_dict.setdefault("STATS_PRINT_PERIOD", 600)
 
     # delay in seconds between middle proxy info updates
-    conf_dict.setdefault("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
+    conf_dict.setdefault("PROXY_INFO_UPDATE_PERIOD", 24 * 60 * 60)
 
     # delay in seconds between time getting, zero means disabled
-    conf_dict.setdefault("GET_TIME_PERIOD", 10*60)
+    conf_dict.setdefault("GET_TIME_PERIOD", 10 * 60)
 
     # delay in seconds between getting the length of certificate on the mask host
-    conf_dict.setdefault("GET_CERT_LEN_PERIOD", random.randrange(4*60*60, 6*60*60))
+    conf_dict.setdefault("GET_CERT_LEN_PERIOD", random.randrange(4 * 60 * 60, 6 * 60 * 60))
 
     # max socket buffer size to the client direction, the more the faster, but more RAM hungry
     # can be the tuple (low, users_margin, high) for the adaptive case. If no much users, use high
@@ -254,13 +253,13 @@ def init_config():
     conf_dict.setdefault("TO_TG_BUFSIZE", 65536)
 
     # keepalive period for clients in secs
-    conf_dict.setdefault("CLIENT_KEEPALIVE", 10*60)
+    conf_dict.setdefault("CLIENT_KEEPALIVE", 10 * 60)
 
     # drop client after this timeout if the handshake fail
     conf_dict.setdefault("CLIENT_HANDSHAKE_TIMEOUT", random.randrange(5, 15))
 
     # if client doesn't confirm data for this number of seconds, it is dropped
-    conf_dict.setdefault("CLIENT_ACK_TIMEOUT", 5*60)
+    conf_dict.setdefault("CLIENT_ACK_TIMEOUT", 5 * 60)
 
     # telegram servers connect timeout in seconds
     conf_dict.setdefault("TG_CONNECT_TIMEOUT", 10)
@@ -362,7 +361,7 @@ def use_slow_bundled_cryptography_module():
     print(msg, flush=True, file=sys.stderr)
 
     class BundledEncryptorAdapter:
-        __slots__ = ('mode', )
+        __slots__ = ('mode',)
 
         def __init__(self, mode):
             self.mode = mode
@@ -382,6 +381,7 @@ def use_slow_bundled_cryptography_module():
     def create_aes_cbc(key, iv):
         mode = pyaes.AESModeOfOperationCBC(key, iv)
         return BundledEncryptorAdapter(mode)
+
     return create_aes_ctr, create_aes_cbc
 
 
@@ -459,7 +459,7 @@ class MyRandom(random.Random):
     def __init__(self):
         super().__init__()
         key = bytes([random.randrange(256) for i in range(32)])
-        iv = random.randrange(256**16)
+        iv = random.randrange(256 ** 16)
 
         self.encryptor = create_aes_ctr(key, iv)
         self.buffer = bytearray()
@@ -472,7 +472,7 @@ class MyRandom(random.Random):
         CHUNK_SIZE = 512
 
         while n > len(self.buffer):
-            data = int.to_bytes(super().getrandbits(CHUNK_SIZE*8), CHUNK_SIZE, "big")
+            data = int.to_bytes(super().getrandbits(CHUNK_SIZE * 8), CHUNK_SIZE, "big")
             self.buffer += self.encryptor.encrypt(data)
 
         result = self.buffer[:n]
@@ -538,7 +538,7 @@ tg_connection_pool = TgConnectionPool()
 
 
 class LayeredStreamReaderBase:
-    __slots__ = ("upstream", )
+    __slots__ = ("upstream",)
 
     def __init__(self, upstream):
         self.upstream = upstream
@@ -551,7 +551,7 @@ class LayeredStreamReaderBase:
 
 
 class LayeredStreamWriterBase:
-    __slots__ = ("upstream", )
+    __slots__ = ("upstream",)
 
     def __init__(self, upstream):
         self.upstream = upstream
@@ -580,7 +580,7 @@ class LayeredStreamWriterBase:
 
 
 class FakeTLSStreamReader(LayeredStreamReaderBase):
-    __slots__ = ('buf', )
+    __slots__ = ('buf',)
 
     def __init__(self, upstream):
         self.upstream = upstream
@@ -631,8 +631,8 @@ class FakeTLSStreamWriter(LayeredStreamWriterBase):
     def write(self, data, extra={}):
         MAX_CHUNK_SIZE = 16384 + 24
         for start in range(0, len(data), MAX_CHUNK_SIZE):
-            end = min(start+MAX_CHUNK_SIZE, len(data))
-            self.upstream.write(b"\x17\x03\x03" + int.to_bytes(end-start, 2, "big"))
+            end = min(start + MAX_CHUNK_SIZE, len(data))
+            self.upstream.write(b"\x17\x03\x03" + int.to_bytes(end - start, 2, "big"))
             self.upstream.write(data[start: end])
         return len(data)
 
@@ -686,14 +686,14 @@ class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
     def write(self, data, extra={}):
         if len(data) % self.block_size != 0:
             print_err("BUG: writing %d bytes not aligned to block size %d" % (
-                      len(data), self.block_size))
+                len(data), self.block_size))
             return 0
         q = self.encryptor.encrypt(data)
         return self.upstream.write(q)
 
 
 class MTProtoFrameStreamReader(LayeredStreamReaderBase):
-    __slots__ = ('seq_no', )
+    __slots__ = ('seq_no',)
 
     def __init__(self, upstream, seq_no=0):
         self.upstream = upstream
@@ -731,7 +731,7 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
 
 
 class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
-    __slots__ = ('seq_no', )
+    __slots__ = ('seq_no',)
 
     def __init__(self, upstream, seq_no=0):
         self.upstream = upstream
@@ -975,7 +975,7 @@ def set_keepalive(sock, interval=40, attempts=5):
 
 def set_ack_timeout(sock, timeout):
     if hasattr(socket, "TCP_USER_TIMEOUT"):
-        try_setsockopt(sock, socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, timeout*1000)
+        try_setsockopt(sock, socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, timeout * 1000)
 
 
 def set_bufsizes(sock, recv_buf, send_buf):
@@ -991,9 +991,9 @@ def set_instant_rst(sock):
 
 def gen_x25519_public_key():
     # generates some number which has square root by modulo P
-    P = 2**255 - 19
+    P = 2 ** 255 - 19
     n = myrandom.randrange(P)
-    return int.to_bytes((n*n) % P, length=32, byteorder="little")
+    return int.to_bytes((n * n) % P, length=32, byteorder="little")
 
 
 async def connect_reader_to_writer(reader, writer):
@@ -1104,23 +1104,23 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
     tls_extensions = b"\x00\x2e" + b"\x00\x33\x00\x24" + b"\x00\x1d\x00\x20"
     tls_extensions += gen_x25519_public_key() + b"\x00\x2b\x00\x02\x03\x04"
 
-    digest = handshake[DIGEST_POS:DIGEST_POS+DIGEST_LEN]
+    digest = handshake[DIGEST_POS:DIGEST_POS + DIGEST_LEN]
 
     if digest[:DIGEST_HALFLEN] in used_handshakes:
         last_clients_with_same_handshake[peer[0]] += 1
         return False
 
     sess_id_len = handshake[SESSION_ID_LEN_POS]
-    sess_id = handshake[SESSION_ID_POS:SESSION_ID_POS+sess_id_len]
+    sess_id = handshake[SESSION_ID_POS:SESSION_ID_POS + sess_id_len]
 
     for user in config.USERS:
         secret = bytes.fromhex(config.USERS[user])
 
-        msg = handshake[:DIGEST_POS] + b"\x00"*DIGEST_LEN + handshake[DIGEST_POS+DIGEST_LEN:]
+        msg = handshake[:DIGEST_POS] + b"\x00" * DIGEST_LEN + handshake[DIGEST_POS + DIGEST_LEN:]
         computed_digest = hmac.new(secret, msg, digestmod=hashlib.sha256).digest()
 
         xored_digest = bytes(digest[i] ^ computed_digest[i] for i in range(DIGEST_LEN))
-        digest_good = xored_digest.startswith(b"\x00" * (DIGEST_LEN-4))
+        digest_good = xored_digest.startswith(b"\x00" * (DIGEST_LEN - 4))
 
         if not digest_good:
             continue
@@ -1129,7 +1129,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         client_time_is_ok = TIME_SKEW_MIN < time.time() - timestamp < TIME_SKEW_MAX
 
         # some clients fail to read unix time and send the time since boot instead
-        client_time_is_small = timestamp < 60*60*24*1000
+        client_time_is_small = timestamp < 60 * 60 * 24 * 1000
         accept_bad_time = config.IGNORE_TIME_SKEW or is_time_skewed or client_time_is_small
 
         if not client_time_is_ok and not accept_bad_time:
@@ -1138,7 +1138,7 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
 
         http_data = myrandom.getrandbytes(fake_cert_len)
 
-        srv_hello = TLS_VERS + b"\x00"*DIGEST_LEN + bytes([sess_id_len]) + sess_id
+        srv_hello = TLS_VERS + b"\x00" * DIGEST_LEN + bytes([sess_id_len]) + sess_id
         srv_hello += TLS_CIPHERSUITE + b"\x00" + tls_extensions
 
         hello_pkt = b"\x16" + TLS_VERS + int.to_bytes(len(srv_hello) + 4, 2, "big")
@@ -1146,8 +1146,8 @@ async def handle_fake_tls_handshake(handshake, reader, writer, peer):
         hello_pkt += TLS_CHANGE_CIPHER + TLS_APP_HTTP2_HDR
         hello_pkt += int.to_bytes(len(http_data), 2, "big") + http_data
 
-        computed_digest = hmac.new(secret, msg=digest+hello_pkt, digestmod=hashlib.sha256).digest()
-        hello_pkt = hello_pkt[:DIGEST_POS] + computed_digest + hello_pkt[DIGEST_POS+DIGEST_LEN:]
+        computed_digest = hmac.new(secret, msg=digest + hello_pkt, digestmod=hashlib.sha256).digest()
+        hello_pkt = hello_pkt[:DIGEST_POS] + computed_digest + hello_pkt[DIGEST_POS + DIGEST_LEN:]
 
         writer.write(hello_pkt)
         await writer.drain()
@@ -1209,12 +1209,12 @@ async def handle_proxy_protocol(reader, peer=None):
         if proxy_ver == 0x21:
             proxy_fam = header[13] >> 4
             if proxy_fam == PROXY2_AF_INET:
-                if proxy_len >= (4 + 2)*2:
+                if proxy_len >= (4 + 2) * 2:
                     src_addr = socket.inet_ntop(socket.AF_INET, proxy_addr[:4])
                     src_port = int.from_bytes(proxy_addr[8:10], "big")
                     return (src_addr, src_port)
             elif proxy_fam == PROXY2_AF_INET6:
-                if proxy_len >= (16 + 2)*2:
+                if proxy_len >= (16 + 2) * 2:
                     src_addr = socket.inet_ntop(socket.AF_INET6, proxy_addr[:16])
                     src_port = int.from_bytes(proxy_addr[32:34], "big")
                     return (src_addr, src_port)
@@ -1272,9 +1272,9 @@ async def handle_handshake(reader, writer):
             return False
         handshake += await reader.readexactly(HANDSHAKE_LEN - len(handshake))
 
-    dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
+    dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN + PREKEY_LEN + IV_LEN]
     dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
-    enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
+    enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN + PREKEY_LEN + IV_LEN][::-1]
     enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
 
     if dec_prekey_and_iv in used_handshakes:
@@ -1293,7 +1293,7 @@ async def handle_handshake(reader, writer):
 
         decrypted = decryptor.decrypt(handshake)
 
-        proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS+4]
+        proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS + 4]
         if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE, PROTO_TAG_SECURE):
             continue
 
@@ -1306,7 +1306,7 @@ async def handle_handshake(reader, writer):
             if not config.MODES["classic"]:
                 continue
 
-        dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
+        dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS + 2], "little", signed=True)
 
         if config.REPLAY_CHECK_LEN > 0:
             while len(used_handshakes) >= config.REPLAY_CHECK_LEN:
@@ -1371,18 +1371,18 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
             continue
         break
 
-    rnd[PROTO_TAG_POS:PROTO_TAG_POS+4] = proto_tag
+    rnd[PROTO_TAG_POS:PROTO_TAG_POS + 4] = proto_tag
 
     if dec_key_and_iv:
-        rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN] = dec_key_and_iv[::-1]
+        rnd[SKIP_LEN:SKIP_LEN + KEY_LEN + IV_LEN] = dec_key_and_iv[::-1]
 
     rnd = bytes(rnd)
 
-    dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN][::-1]
+    dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN + KEY_LEN + IV_LEN][::-1]
     dec_key, dec_iv = dec_key_and_iv[:KEY_LEN], dec_key_and_iv[KEY_LEN:]
     decryptor = create_aes_ctr(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
 
-    enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN]
+    enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN + KEY_LEN + IV_LEN]
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
     encryptor = create_aes_ctr(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
@@ -1439,7 +1439,7 @@ async def middleproxy_handshake(host, port, reader_tgt, writer_tgt):
 
     writer_tgt = MTProtoFrameStreamWriter(writer_tgt, START_SEQ_NO)
     key_selector = PROXY_SECRET[:4]
-    crypto_ts = int.to_bytes(int(time.time()) % (256**4), 4, "little")
+    crypto_ts = int.to_bytes(int(time.time()) % (256 ** 4), 4, "little")
 
     nonce = myrandom.getrandbytes(NONCE_LEN)
 
@@ -1659,19 +1659,19 @@ async def handle_client(reader_clt, writer_clt):
     update_user_stats(user, curr_connects=1)
 
     tcp_limit_hit = (
-        user in config.USER_MAX_TCP_CONNS and
-        user_stats[user]["curr_connects"] > config.USER_MAX_TCP_CONNS[user]
+            user in config.USER_MAX_TCP_CONNS and
+            user_stats[user]["curr_connects"] > config.USER_MAX_TCP_CONNS[user]
     )
 
     user_expired = (
-        user in config.USER_EXPIRATIONS and
-        datetime.datetime.now() > config.USER_EXPIRATIONS[user]
+            user in config.USER_EXPIRATIONS and
+            datetime.datetime.now() > config.USER_EXPIRATIONS[user]
     )
 
     user_data_quota_hit = (
-        user in config.USER_DATA_QUOTA and
-        (user_stats[user]["octets_to_client"] +
-         user_stats[user]["octets_from_client"] > config.USER_DATA_QUOTA[user])
+            user in config.USER_DATA_QUOTA and
+            (user_stats[user]["octets_to_client"] +
+             user_stats[user]["octets_from_client"] > config.USER_DATA_QUOTA[user])
     )
 
     if (not tcp_limit_hit) and (not user_expired) and (not user_data_quota_hit):
@@ -1754,10 +1754,10 @@ async def handle_metrics(reader, writer):
         metrics = []
         metrics.append(["uptime", "counter", "proxy uptime", time.time() - proxy_start_time])
         metrics.append(["connects_bad", "counter", "connects with bad secret",
-                       stats["connects_bad"]])
+                        stats["connects_bad"]])
         metrics.append(["connects_all", "counter", "incoming connects", stats["connects_all"]])
         metrics.append(["handshake_timeouts", "counter", "number of timed out handshakes",
-                       stats["handshake_timeouts"]])
+                        stats["handshake_timeouts"]])
 
         if config.METRICS_EXPORT_LINKS:
             for link in proxy_links:
@@ -1780,9 +1780,9 @@ async def handle_metrics(reader, writer):
             ["user_connects", "counter", "user connects", "connects"],
             ["user_connects_curr", "gauge", "current user connects", "curr_connects"],
             ["user_octets", "counter", "octets proxied for user",
-                "octets_from_client+octets_to_client"],
+             "octets_from_client+octets_to_client"],
             ["user_msgs", "counter", "msgs proxied for user",
-                "msgs_from_client+msgs_to_client"],
+             "msgs_from_client+msgs_to_client"],
             ["user_octets_from", "counter", "octets proxied from user", "octets_from_client"],
             ["user_octets_to", "counter", "octets proxied to user", "octets_to_client"],
             ["user_msgs_from", "counter", "msgs proxied from user", "msgs_from_client"],
@@ -1956,7 +1956,7 @@ async def get_mask_host_cert_len():
                       config.MASK_HOST)
         except Exception as E:
             print_err("Failed to connect to MASK_HOST %s: %s" % (
-                      config.MASK_HOST, E))
+                config.MASK_HOST, E))
 
         await asyncio.sleep(config.GET_CERT_LEN_PERIOD)
 
@@ -1979,7 +1979,7 @@ async def get_srv_time():
                 line = line[len("Date: "):].decode()
                 srv_time = datetime.datetime.strptime(line, "%a, %d %b %Y %H:%M:%S %Z")
                 now_time = datetime.datetime.utcnow()
-                is_time_skewed = (now_time-srv_time).total_seconds() > MAX_TIME_SKEW
+                is_time_skewed = (now_time - srv_time).total_seconds() > MAX_TIME_SKEW
                 if is_time_skewed and config.USE_MIDDLE_PROXY and not disable_middle_proxy:
                     print_err("Time skew detected, please set the clock")
                     print_err("Server time:", srv_time, "your time:", now_time)
@@ -2121,16 +2121,16 @@ def print_tg_info():
             if config.MODES["classic"]:
                 params = {"server": ip, "port": config.PORT, "secret": secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
-                classic_link = "tg://proxy?{}".format(params_encodeded)
+                classic_link = f"tg://proxy?{params_encodeded}"
                 proxy_links.append({"user": user, "link": classic_link})
-                print("{}: {}".format(user, classic_link), flush=True)
+                print(f"{user}: {classic_link}", flush=True)
 
             if config.MODES["secure"]:
                 params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
-                dd_link = "tg://proxy?{}".format(params_encodeded)
+                dd_link = f"tg://proxy?params_encodeded}"
                 proxy_links.append({"user": user, "link": dd_link})
-                print("{}: {}".format(user, dd_link), flush=True)
+                print(f"{user}: {dd_link}", flush=True)
 
             if config.MODES["tls"]:
                 tls_secret = "ee" + secret + config.TLS_DOMAIN.encode().hex()
@@ -2139,13 +2139,13 @@ def print_tg_info():
                 # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
                 params = {"server": ip, "port": config.PORT, "secret": tls_secret}
                 params_encodeded = urllib.parse.urlencode(params, safe=':')
-                tls_link = "tg://proxy?{}".format(params_encodeded)
+                tls_link = f"tg://proxy?{params_encodeded}"
                 proxy_links.append({"user": user, "link": tls_link})
-                print("{}: {}".format(user, tls_link), flush=True)
+                print(f"{user}: {tls_link}", flush=True)
 
         if secret in ["00000000000000000000000000000000", "0123456789abcdef0123456789abcdef",
                       "00000000000000000000000000000001"]:
-            msg = "The default secret {} is used, this is not recommended".format(secret)
+            msg = f"The default secret {secret} is used, this is not recommended"
             print(msg, flush=True)
             random_secret = "".join(myrandom.choice("0123456789abcdef") for i in range(32))
             print("You can change it to this random secret:", random_secret, flush=True)
@@ -2227,11 +2227,11 @@ def loop_exception_handler(loop, context):
         if isinstance(exception, OSError):
             IGNORE_ERRNO = {
                 10038,  # operation on non-socket on Windows, likely because fd == -1
-                121,    # the semaphore timeout period has expired on Windows
+                121,  # the semaphore timeout period has expired on Windows
             }
 
             FORCE_CLOSE_ERRNO = {
-                113,    # no route to host
+                113,  # no route to host
 
             }
             if exception.errno in IGNORE_ERRNO:
