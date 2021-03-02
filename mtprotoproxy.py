@@ -195,7 +195,7 @@ def init_config():
 
     # the next host to forward bad clients
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
-    
+
     # set the home domain for the proxy, has an influence only on the log message
     conf_dict.setdefault("MY_DOMAIN", False)
 
@@ -2085,6 +2085,10 @@ def init_ip_info():
 
     my_ip_info["ipv4"] = get_ip_from_url(IPV4_URL1) or get_ip_from_url(IPV4_URL2)
     my_ip_info["ipv6"] = get_ip_from_url(IPV6_URL1) or get_ip_from_url(IPV6_URL2)
+
+    # the server can return ipv4 address instead of ipv6
+    if my_ip_info["ipv6"] and ":" not in my_ip_info["ipv6"]:
+        my_ip_info["ipv6"] = None
 
     if my_ip_info["ipv6"] and (config.PREFER_IPV6 or not my_ip_info["ipv4"]):
         print_err("IPv6 found, using it for external communication")
