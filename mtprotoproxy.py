@@ -95,7 +95,11 @@ proxy_links = []
 
 stats = collections.Counter()
 user_stats = collections.defaultdict(collections.Counter)
-
+try:
+	with open("saved_data.prx", "rb") as fp:
+		user_stats = pickle.load(fp)
+except:
+	print("save_data.prx doesn't exist. Defaults were loaded.")
 config = {}
 
 
@@ -1818,7 +1822,10 @@ async def stats_printer():
 
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
-
+		
+		with open("saved_data.prx", "wb") as fp:
+                pickle.dump(user_stats, fp)
+		
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
         for user, stat in user_stats.items():
             print("%s: %d connects (%d current), %.2f MB, %d msgs" % (
