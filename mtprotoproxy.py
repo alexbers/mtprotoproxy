@@ -1823,7 +1823,7 @@ async def stats_printer():
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
 		
-		with open("saved_data.prx", "wb") as fp:
+        with open("saved_data.prx", "wb") as fp:
                 pickle.dump(user_stats, fp)
 		
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
