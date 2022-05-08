@@ -2287,21 +2287,21 @@ def create_servers(loop):
 def create_utilitary_tasks(loop):
     tasks = []
 
-    stats_printer_task = asyncio.Task(stats_printer())
+    stats_printer_task = asyncio.Task(stats_printer(), loop=loop)
     tasks.append(stats_printer_task)
 
     if config.USE_MIDDLE_PROXY:
-        middle_proxy_updater_task = asyncio.Task(update_middle_proxy_info())
+        middle_proxy_updater_task = asyncio.Task(update_middle_proxy_info(), loop=loop)
         tasks.append(middle_proxy_updater_task)
 
         if config.GET_TIME_PERIOD:
-            time_get_task = asyncio.Task(get_srv_time())
+            time_get_task = asyncio.Task(get_srv_time(), loop=loop)
             tasks.append(time_get_task)
 
-    get_cert_len_task = asyncio.Task(get_mask_host_cert_len())
+    get_cert_len_task = asyncio.Task(get_mask_host_cert_len(), loop=loop)
     tasks.append(get_cert_len_task)
 
-    clear_resolving_cache_task = asyncio.Task(clear_ip_resolving_cache())
+    clear_resolving_cache_task = asyncio.Task(clear_ip_resolving_cache(), loop=loop)
     tasks.append(clear_resolving_cache_task)
 
     return tasks
@@ -2323,9 +2323,10 @@ def main():
 
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
-        asyncio.set_event_loop(loop)
+    else:
+        loop = asyncio.new_event_loop()
 
-    loop = asyncio.get_event_loop()
+    asyncio.set_event_loop(loop)
     loop.set_exception_handler(loop_exception_handler)
 
     utilitary_tasks = create_utilitary_tasks(loop)
