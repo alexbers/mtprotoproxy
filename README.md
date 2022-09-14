@@ -1,6 +1,8 @@
 # Async MTProto Proxy #
 
 Fast and simple to setup MTProto proxy written in Python.
+[![kandi X-Ray](https://kandi.openweaver.com/badges/xray.svg)](https://kandi.openweaver.com/python/alexbers/mtprotoproxy)
+[![kandi Featured](https://kandi.openweaver.com/badges/featured.svg)](https://kandi.openweaver.com/collections/python/python-telegram-bot)
 
 ## Starting Up ##
     
