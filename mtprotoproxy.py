@@ -891,7 +891,7 @@ class ProxyReqStreamReader(LayeredStreamReaderBase):
             return b"", {"SKIP_SEND": True}
 
         print_err("unknown rpc ans type:", ans_type)
-        return b""
+        return b"", {"SKIP_SEND": True}
 
 
 class ProxyReqStreamWriter(LayeredStreamWriterBase):
