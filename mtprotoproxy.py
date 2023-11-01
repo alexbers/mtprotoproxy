@@ -19,7 +19,7 @@ import signal
 import os
 import stat
 import traceback
-
+import pickle
 
 TG_DATACENTER_PORT = 443
 
@@ -95,7 +95,11 @@ proxy_links = []
 
 stats = collections.Counter()
 user_stats = collections.defaultdict(collections.Counter)
-
+try:
+	with open("saved_data.prx", "rb") as fp:
+		user_stats = pickle.load(fp)
+except Exception as e:
+	print("saved_data.prx doesn't exist. Defaults were loaded. Full eror: \n\r" + str(e))
 config = {}
 
 
@@ -1825,7 +1829,13 @@ async def stats_printer():
 
     while True:
         await asyncio.sleep(config.STATS_PRINT_PERIOD)
-
+		
+        try:
+            with open("saved_data.prx", "wb") as fp:
+                pickle.dump(user_stats, fp)
+        except Exception as e:
+            print(e)
+		
         print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
         for user, stat in user_stats.items():
             print("%s: %d connects (%d current), %.2f MB, %d msgs" % (
