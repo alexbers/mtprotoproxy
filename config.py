@@ -23,5 +23,9 @@ MODES = {
 # Use random existing domain, proxy checks it on start
 # TLS_DOMAIN = "www.google.com"
 
-# Tag for advertising, obtainable from @MTProxybot
-# AD_TAG = "3c09c680b76ee91a4c25ad51f742267d"
+# Prometheus exporter host and port for the dedicated endpoint
+PROMETHEUS_HOST = "0.0.0.0"
+PROMETHEUS_PORT = 9100
+
+# Prometheus scrapers whitelist for safety
+PROMETHEUS_SCRAPERS = ["127.0.0.1", "::1"]

@@ -19,6 +19,7 @@ import signal
 import os
 import stat
 import traceback
+import http.server
 
 
 TG_DATACENTER_PORT = 443
@@ -97,6 +98,81 @@ stats = collections.Counter()
 user_stats = collections.defaultdict(collections.Counter)
 
 config = {}
+
+
+async def http_reply(writer, line, body=b"", eof=False):
+    BaseHTTPRequestHandler = http.server.BaseHTTPRequestHandler
+    msg = (
+        "HTTP/1.1 {}\r\n"
+        "Server: mtprotoproxy\r\n"
+        "Date: {}\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: {:d}\r\n"
+    ).format(
+        line,
+        BaseHTTPRequestHandler.date_time_string(BaseHTTPRequestHandler),
+        len(body)
+    ).encode("ascii")
+    if eof:
+        msg += b"Connection: close\r\n"
+    msg += b"\r\n" + body
+    writer.write(msg)
+    await writer.drain()
+    if eof:
+        writer.write_eof()
+        writer.close()
+
+
+async def handle_promstats(reader, writer):
+    set_keepalive(writer.get_extra_info("socket"), 75)  # prometheus should never go away for a long time
+    
+    client_ip = writer.get_extra_info("peername")[0]
+    prometheus_scrapers = config.get("PROMETHEUS_SCRAPERS", {'127.0.0.1', '::1'})
+    
+    if prometheus_scrapers and client_ip not in prometheus_scrapers:
+        writer.close()
+        return
+        
+    while True:  # Keep-Alive
+        try:
+            request = await reader.readuntil(b"\r\n\r\n")
+            if request.startswith(b"GET /metrics HTTP/1."):
+                promstat = (
+                    "# HELP mtproxy_pump_bytes Number of post-handshake bytes pumped in both directions.\n"
+                    "# TYPE mtproxy_pump_bytes counter\n"
+                ) + "".join(
+                    "mtproxy_pump_bytes{{user=\"{}\"}} {:d}\n".format(u, user_stats[u]["octets_from_client"] + user_stats[u]["octets_to_client"])
+                    for u in user_stats
+                ) + (
+                    "# HELP mtproxy_connections Current number of post-handshake client connections.\n"
+                    "# TYPE mtproxy_connections gauge\n"
+                ) + "".join(
+                    "mtproxy_connections{{user=\"{}\"}} {:d}\n".format(u, user_stats[u]["curr_connects"])
+                    for u in user_stats
+                ) + (
+                    "# HELP mtproxy_connections_total Total number of post-handshake client connections served.\n"
+                    "# TYPE mtproxy_connections_total counter\n"
+                ) + "".join(
+                    "mtproxy_connections_total{{user=\"{}\"}} {:d}\n".format(u, user_stats[u]["connects"])
+                    for u in user_stats
+                )
+                await http_reply(writer, "200 OK", promstat.encode("ascii"))
+            else:
+                await http_reply(writer, "400 Bad Request", b"Bad Request.\n", eof=True)
+                return
+        except (asyncio.IncompleteReadError, ConnectionResetError, TimeoutError):
+            break
+            
+    writer.transport.abort()
+
+
+async def handle_promstats_wrapper(reader, writer):
+    try:
+        await handle_promstats(reader, writer)
+    except (asyncio.IncompleteReadError, ConnectionResetError, TimeoutError):
+        pass
+    finally:
+        writer.transport.abort()
 
 
 def init_config():
@@ -276,6 +352,13 @@ def init_config():
 
     # prometheus exporter listen port, use some random port here
     conf_dict.setdefault("METRICS_PORT", None)
+
+    # prometheus host and port for the dedicated Prometheus endpoint
+    conf_dict.setdefault("PROMETHEUS_HOST", "0.0.0.0")
+    conf_dict.setdefault("PROMETHEUS_PORT", None)
+    
+    # prometheus scrapers whitelist for safety
+    conf_dict.setdefault("PROMETHEUS_SCRAPERS", ["127.0.0.1", "::1"])
 
     # prometheus listen addr ipv4
     conf_dict.setdefault("METRICS_LISTEN_ADDR_IPV4", "0.0.0.0")
@@ -2297,6 +2380,14 @@ def create_servers(loop):
             task = asyncio.start_server(handle_metrics, config.METRICS_LISTEN_ADDR_IPV6,
                                         config.METRICS_PORT)
             servers.append(loop.run_until_complete(task))
+            
+    if config.PROMETHEUS_PORT is not None:
+        task = asyncio.start_server(handle_promstats_wrapper, config.PROMETHEUS_HOST, config.PROMETHEUS_PORT,
+                                  limit=4096,  # http request is quite small
+                                  backlog=8,   # there are few prometheus collectors
+                                  reuse_address=True,  # that's still server, TIME_WAIT should not block restart
+                                  reuse_port=False)    # if you reuse statistics port for several instances, you're doing it wrong!
+        servers.append(loop.run_until_complete(task))
 
     return servers
 
