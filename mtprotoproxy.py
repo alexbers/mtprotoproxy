@@ -2382,6 +2382,8 @@ def create_servers(loop):
             servers.append(loop.run_until_complete(task))
             
     if config.PROMETHEUS_PORT is not None:
+        print_err("Prometheus exporter enabled on {}:{}".format(config.PROMETHEUS_HOST, config.PROMETHEUS_PORT))
+        print_err("Allowed scrapers: {}".format(", ".join(config.PROMETHEUS_SCRAPERS)))
         task = asyncio.start_server(handle_promstats_wrapper, config.PROMETHEUS_HOST, config.PROMETHEUS_PORT,
                                   limit=4096,  # http request is quite small
                                   backlog=8,   # there are few prometheus collectors

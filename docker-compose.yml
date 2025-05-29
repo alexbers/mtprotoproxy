@@ -4,6 +4,7 @@ networks:
 
 services:
   mtprotoproxy:
+    container_name: mtprotoproxy
     build: .
     restart: unless-stopped
     network_mode: "host"

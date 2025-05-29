@@ -15,7 +15,8 @@ PROMETHEUS_HOST = "0.0.0.0"
 PROMETHEUS_PORT = 9100
 
 # Prometheus scrapers whitelist for safety
-PROMETHEUS_SCRAPERS = ["127.0.0.1", "::1"]
+# Empty list allows access from any IP address
+PROMETHEUS_SCRAPERS = []
 
 def is_valid_secret(secret):
     """Validate if secret is a valid 32 character hex string"""
