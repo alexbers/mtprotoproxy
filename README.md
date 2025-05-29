@@ -11,6 +11,33 @@ Fast and simple to setup MTProto proxy written in Python.
 
 ![Demo](https://alexbers.com/mtprotoproxy/install_demo_v2.gif)
 
+## User Management ##
+
+The proxy comes with a command-line tool to easily manage users:
+
+1. Add a new user with auto-generated secret:
+```bash
+./manage_users.py add username
+# Output: User username added successfully with secret: 1234567890abcdef1234567890abcdef
+```
+
+2. Add a user with specific secret:
+```bash
+./manage_users.py add username 00000000000000000000000000000001
+```
+
+3. List all users:
+```bash
+./manage_users.py list
+```
+
+4. Remove a user:
+```bash
+./manage_users.py remove username
+```
+
+The changes are applied immediately thanks to the hot reload feature - no need to restart the proxy.
+
 ## Channel Advertising ##
 
 To advertise a channel get a tag from **@MTProxybot** and put it to *config.py*.
