@@ -62,7 +62,6 @@ PREKEY_LEN = 32
 KEY_LEN = 32
 IV_LEN = 16
 HANDSHAKE_LEN = 64
-TLS_HANDSHAKE_LEN = 1 + 2 + 2 + 512
 PROTO_TAG_POS = 56
 DC_IDX_POS = 60
 
@@ -1236,7 +1235,7 @@ async def handle_handshake(reader, writer):
     global last_client_ips
     global last_clients_with_same_handshake
 
-    TLS_START_BYTES = b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03"
+    TLS_START_BYTES = b"\x16\x03\x01"
 
     if writer.transport.is_closing() or writer.get_extra_info("peername") is None:
         return False
@@ -1262,7 +1261,13 @@ async def handle_handshake(reader, writer):
             break
 
     if is_tls_handshake:
-        handshake += await reader.readexactly(TLS_HANDSHAKE_LEN - len(handshake))
+        handshake += await reader.readexactly(2)
+        tls_handshake_len = int.from_bytes(handshake[-2:], "big")
+        if tls_handshake_len < 512:
+            is_tls_handshake = False
+
+    if is_tls_handshake:
+        handshake += await reader.readexactly(tls_handshake_len)
         tls_handshake_result = await handle_fake_tls_handshake(handshake, reader, writer, peer)
 
         if not tls_handshake_result:
