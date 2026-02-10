@@ -657,7 +657,7 @@ class CryptoWrappedStreamReader(LayeredStreamReaderBase):
 
             needed_till_full_block = -len(data) % self.block_size
             if needed_till_full_block > 0:
-                data += self.upstream.readexactly(needed_till_full_block)
+                data += await self.upstream.readexactly(needed_till_full_block)
             return self.decryptor.decrypt(data)
 
     async def readexactly(self, n):
@@ -1364,7 +1364,7 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
         print_err("Got connection refused while trying to connect to", dc, TG_DATACENTER_PORT)
         return False
     except ConnectionAbortedError as E:
-        print_err("The Telegram server connection is bad: %d (%s %s) %s" % (dc_idx, addr, port, E))
+        print_err("The Telegram server connection is bad: %d (%s %s) %s" % (dc_idx, dc, TG_DATACENTER_PORT, E))
         return False
     except (OSError, asyncio.TimeoutError) as E:
         print_err("Unable to connect to", dc, TG_DATACENTER_PORT)
