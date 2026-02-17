@@ -139,10 +139,10 @@ def init_config():
     # use middle proxy, necessary to show ad
     conf_dict.setdefault("USE_MIDDLE_PROXY", len(conf_dict["AD_TAG"]) == 16)
 
-    # if IPv6 avaliable, use it by default
+    # if IPv6 available, use it by default
     conf_dict.setdefault("PREFER_IPV6", socket.has_ipv6)
 
-    # disables tg->client trafic reencryption, faster but less secure
+    # disables tg->client traffic reencryption, faster but less secure
     conf_dict.setdefault("FAST_MODE", True)
 
     # enables some working modes
@@ -522,7 +522,7 @@ class TgConnectionPool:
         self.register_host_port(host, port, init_func)
 
         ret = None
-        for task in self.pools[(host, port, init_func)][::]:
+        for task in self.pools[(host, port, init_func)][:]:
             if task.done():
                 if task.exception():
                     self.pools[(host, port, init_func)].remove(task)
@@ -789,7 +789,7 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
 
     def write(self, data, extra={}):
         SMALL_PKT_BORDER = 0x7f
-        LARGE_PKT_BORGER = 256 ** 3
+        LARGE_PKT_BORDER = 256 ** 3
 
         if len(data) % 4 != 0:
             print_err("BUG: MTProtoFrameStreamWriter attempted to send msg with len", len(data))
@@ -802,7 +802,7 @@ class MTProtoCompactFrameStreamWriter(LayeredStreamWriterBase):
 
         if len_div_four < SMALL_PKT_BORDER:
             return self.upstream.write(bytes([len_div_four]) + data)
-        elif len_div_four < LARGE_PKT_BORGER:
+        elif len_div_four < LARGE_PKT_BORDER:
             return self.upstream.write(b'\x7f' + int.to_bytes(len_div_four, 3, 'little') + data)
         else:
             print_err("Attempted to send too large pkt len =", len(data))
@@ -2011,7 +2011,7 @@ async def get_srv_time():
                     continue
                 line = line[len("Date: "):].decode()
                 srv_time = datetime.datetime.strptime(line, "%a, %d %b %Y %H:%M:%S %Z")
-                now_time = datetime.datetime.utcnow()
+                now_time = datetime.datetime.now(datetime.timezone.utc)
                 is_time_skewed = (now_time-srv_time).total_seconds() > MAX_TIME_SKEW
                 if is_time_skewed and config.USE_MIDDLE_PROXY and not disable_middle_proxy:
                     print_err("Time skew detected, please set the clock")
@@ -2157,15 +2157,15 @@ def print_tg_info():
         for ip in ip_addrs:
             if config.MODES["classic"]:
                 params = {"server": ip, "port": config.PORT, "secret": secret}
-                params_encodeded = urllib.parse.urlencode(params, safe=':')
-                classic_link = "tg://proxy?{}".format(params_encodeded)
+                params_encoded = urllib.parse.urlencode(params, safe=':')
+                classic_link = "tg://proxy?{}".format(params_encoded)
                 proxy_links.append({"user": user, "link": classic_link})
                 print("{}: {}".format(user, classic_link), flush=True)
 
             if config.MODES["secure"]:
                 params = {"server": ip, "port": config.PORT, "secret": "dd" + secret}
-                params_encodeded = urllib.parse.urlencode(params, safe=':')
-                dd_link = "tg://proxy?{}".format(params_encodeded)
+                params_encoded = urllib.parse.urlencode(params, safe=':')
+                dd_link = "tg://proxy?{}".format(params_encoded)
                 proxy_links.append({"user": user, "link": dd_link})
                 print("{}: {}".format(user, dd_link), flush=True)
 
@@ -2175,8 +2175,8 @@ def print_tg_info():
                 # tls_secret = bytes.fromhex("ee" + secret) + config.TLS_DOMAIN.encode()
                 # tls_secret_base64 = base64.urlsafe_b64encode(tls_secret)
                 params = {"server": ip, "port": config.PORT, "secret": tls_secret}
-                params_encodeded = urllib.parse.urlencode(params, safe=':')
-                tls_link = "tg://proxy?{}".format(params_encodeded)
+                params_encoded = urllib.parse.urlencode(params, safe=':')
+                tls_link = "tg://proxy?{}".format(params_encoded)
                 proxy_links.append({"user": user, "link": tls_link})
                 print("{}: {}".format(user, tls_link), flush=True)
 
