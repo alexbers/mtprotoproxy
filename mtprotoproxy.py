@@ -483,7 +483,7 @@ myrandom = MyRandom()
 
 
 class TgConnectionPool:
-    MAX_CONNS_IN_POOL = 64
+    MAX_CONNS_IN_POOL = 16
 
     def __init__(self):
         self.pools = {}
@@ -499,6 +499,16 @@ class TgConnectionPool:
             return await asyncio.wait_for(init_func(host, port, reader_tgt, writer_tgt),
                                           timeout=config.TG_CONNECT_TIMEOUT)
         return reader_tgt, writer_tgt
+
+    def is_conn_dead(self, reader, writer):
+        if writer.transport.is_closing():
+            return True
+        raw_reader = reader
+        while hasattr(raw_reader, 'upstream'):
+            raw_reader = raw_reader.upstream
+        if raw_reader.at_eof():
+            return True
+        return False
 
     def register_host_port(self, host, port, init_func):
         if (host, port, init_func) not in self.pools:
@@ -519,8 +529,9 @@ class TgConnectionPool:
                     continue
 
                 reader, writer, *other = task.result()
-                if writer.transport.is_closing():
+                if self.is_conn_dead(reader, writer):
                     self.pools[(host, port, init_func)].remove(task)
+                    writer.transport.abort()
                     continue
 
                 if not ret:
