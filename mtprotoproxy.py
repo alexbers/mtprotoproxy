@@ -264,6 +264,9 @@ def init_config():
     # telegram servers connect timeout in seconds
     conf_dict.setdefault("TG_CONNECT_TIMEOUT", 10)
 
+    # drop connection if no data from telegram server for this many seconds
+    conf_dict.setdefault("TG_READ_TIMEOUT", 60)
+
     # listen address for IPv4
     conf_dict.setdefault("LISTEN_ADDR_IPV4", "0.0.0.0")
 
@@ -1584,7 +1587,11 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
 async def tg_connect_reader_to_writer(rd, wr, user, rd_buf_size, is_upstream):
     try:
         while True:
-            data = await rd.read(rd_buf_size)
+            if not is_upstream:
+                data = await asyncio.wait_for(rd.read(rd_buf_size),
+                                              timeout=config.TG_READ_TIMEOUT)
+            else:
+                data = await rd.read(rd_buf_size)
             if isinstance(data, tuple):
                 data, extra = data
             else:
@@ -1605,7 +1612,7 @@ async def tg_connect_reader_to_writer(rd, wr, user, rd_buf_size, is_upstream):
 
                 wr.write(data, extra)
                 await wr.drain()
-    except (OSError, asyncio.IncompleteReadError) as e:
+    except (OSError, asyncio.IncompleteReadError, asyncio.TimeoutError) as e:
         # print_err(e)
         pass
 
