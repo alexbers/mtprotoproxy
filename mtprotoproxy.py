@@ -2011,6 +2011,7 @@ async def get_srv_time():
                     continue
                 line = line[len("Date: "):].decode()
                 srv_time = datetime.datetime.strptime(line, "%a, %d %b %Y %H:%M:%S %Z")
+                srv_time = srv_time.replace(tzinfo=datetime.timezone.utc)
                 now_time = datetime.datetime.now(datetime.timezone.utc)
                 is_time_skewed = (now_time-srv_time).total_seconds() > MAX_TIME_SKEW
                 if is_time_skewed and config.USE_MIDDLE_PROXY and not disable_middle_proxy:
