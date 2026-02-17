@@ -139,8 +139,8 @@ def init_config():
     # use middle proxy, necessary to show ad
     conf_dict.setdefault("USE_MIDDLE_PROXY", len(conf_dict["AD_TAG"]) == 16)
 
-    # if IPv6 available, use it by default
-    conf_dict.setdefault("PREFER_IPV6", socket.has_ipv6)
+    # if IPv6 available, use it by default, IPv6 with middle proxies is unstable now
+    conf_dict.setdefault("PREFER_IPV6", socket.has_ipv6 and not conf_dict["USE_MIDDLE_PROXY"])
 
     # disables tg->client traffic reencryption, faster but less secure
     conf_dict.setdefault("FAST_MODE", True)
