@@ -94,6 +94,7 @@ proxy_links = []
 
 stats = collections.Counter()
 user_stats = collections.defaultdict(collections.Counter)
+user_ip_conns = collections.defaultdict(lambda: collections.defaultdict(int))
 
 config = {}
 
@@ -1687,6 +1688,7 @@ async def handle_client(reader_clt, writer_clt):
     task_clt_to_tg = asyncio.ensure_future(clt_to_tg)
 
     update_user_stats(user, curr_connects=1)
+    user_ip_conns[user][cl_ip] += 1
 
     tcp_limit_hit = (
         user in config.USER_MAX_TCP_CONNS and
@@ -1710,6 +1712,10 @@ async def handle_client(reader_clt, writer_clt):
         update_durations(time.time() - start)
 
     update_user_stats(user, curr_connects=-1)
+
+    user_ip_conns[user][cl_ip] -= 1
+    if user_ip_conns[user][cl_ip] <= 0:
+        del user_ip_conns[user][cl_ip]
 
     task_tg_to_clt.cancel()
     task_clt_to_tg.cancel()
@@ -1830,6 +1836,11 @@ async def handle_metrics(reader, writer):
                 metric = {"user": user, "val": val}
                 metrics.append([m_name, m_type, m_desc, metric])
 
+
+        for user in user_stats:
+            metric = {"user": user, "val": len(user_ip_conns[user])}
+            metrics.append(["user_unique_ips", "gauge",
+                           "number of unique IPs currently connected per user", metric])
         pkt = make_metrics_pkt(metrics)
         writer.write(pkt.encode())
         await writer.drain()
