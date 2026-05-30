@@ -949,7 +949,7 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             print_err("BUG: attempted to send msg with len %d" % len(msg))
             return 0
 
-        flags = FLAG_HAS_AD_TAG | FLAG_MAGIC | FLAG_EXTMODE2
+        flags = FLAG_MAGIC | FLAG_EXTMODE2
 
         if self.proto_tag == PROTO_TAG_ABRIDGED:
             flags |= FLAG_ABRIDGED
@@ -964,10 +964,15 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         if msg.startswith(b"\x00" * 8):
             flags |= FLAG_NOT_ENCRYPTED
 
+        if len(config.AD_TAG) == 16:
+            flags |= FLAG_HAS_AD_TAG
+
         full_msg = bytearray()
         full_msg += RPC_PROXY_REQ + int.to_bytes(flags, 4, "little") + self.out_conn_id
-        full_msg += self.remote_ip_port + self.our_ip_port + EXTRA_SIZE + PROXY_TAG
-        full_msg += bytes([len(config.AD_TAG)]) + config.AD_TAG + FOUR_BYTES_ALIGNER
+        full_msg += self.remote_ip_port + self.our_ip_port
+        if len(config.AD_TAG) == 16:
+            full_msg += EXTRA_SIZE + PROXY_TAG
+            full_msg += bytes([len(config.AD_TAG)]) + config.AD_TAG + FOUR_BYTES_ALIGNER
         full_msg += msg
 
         return self.upstream.write(full_msg)
@@ -1559,23 +1564,26 @@ async def do_middleproxy_handshake(proto_tag, dc_idx, cl_ip, cl_port):
     if use_ipv6_tg:
         if dc_idx not in TG_MIDDLE_PROXIES_V6:
             return False
-        addr, port = myrandom.choice(TG_MIDDLE_PROXIES_V6[dc_idx])
+        proxies = list(TG_MIDDLE_PROXIES_V6[dc_idx])
     else:
         if dc_idx not in TG_MIDDLE_PROXIES_V4:
             return False
-        addr, port = myrandom.choice(TG_MIDDLE_PROXIES_V4[dc_idx])
+        proxies = list(TG_MIDDLE_PROXIES_V4[dc_idx])
 
-    try:
-        ret = await tg_connection_pool.get_connection(addr, port, middleproxy_handshake)
-        reader_tgt, writer_tgt, my_ip, my_port = ret
-    except ConnectionRefusedError as E:
-        print_err("The Telegram server %d (%s %s) is refusing connections" % (dc_idx, addr, port))
-        return False
-    except ConnectionAbortedError as E:
-        print_err("The Telegram server connection is bad: %d (%s %s) %s" % (dc_idx, addr, port, E))
-        return False
-    except (OSError, asyncio.TimeoutError) as E:
-        print_err("Unable to connect to the Telegram server %d (%s %s)" % (dc_idx, addr, port))
+    myrandom.shuffle(proxies)
+
+    for addr, port in proxies:
+        try:
+            reader_tgt, writer_tgt, my_ip, my_port = await tg_connection_pool.get_connection(
+                addr, port, middleproxy_handshake)
+            break
+        except ConnectionRefusedError as E:
+            print_err("The Telegram server %d (%s %s) is refusing connections, trying next" % (dc_idx, addr, port))
+        except ConnectionAbortedError as E:
+            print_err("The Telegram server connection is bad: %d (%s %s) %s, trying next" % (dc_idx, addr, port, E))
+        except (OSError, asyncio.TimeoutError) as E:
+            print_err("Unable to connect to the Telegram server %d (%s %s), trying next" % (dc_idx, addr, port))
+    else:
         return False
 
     writer_tgt = ProxyReqStreamWriter(writer_tgt, cl_ip, cl_port, my_ip, my_port, proto_tag)
