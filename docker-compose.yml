@@ -5,8 +5,6 @@ services:
     restart: unless-stopped
     network_mode: "host"
     volumes:
-        - ./config.py:/home/tgproxy/config.py
-        - ./mtprotoproxy.py:/home/tgproxy/mtprotoproxy.py
         - /etc/localtime:/etc/localtime:ro
     logging:
         driver: "json-file"
