@@ -5,9 +5,16 @@ Fast and simple to setup MTProto proxy written in Python.
 ## Starting Up ##
     
 1. `git clone -b stable https://github.com/alexbers/mtprotoproxy.git; cd mtprotoproxy`
-2. *(optional, recommended)* edit *config.py*, set **PORT**, **USERS** and **AD_TAG**
-3. `docker-compose up -d` (or just `python3 mtprotoproxy.py` if you don't like Docker)
-4. *(optional, get a link to share the proxy)* `docker-compose logs`
+2. *(optional)* edit *config.py*, set **PORT** and **AD_TAG**. Leave the placeholder secret
+   `00000000000000000000000000000001` in **USERS** as is: the Docker build replaces it with a random
+   32-hex-char secret, so every image gets its own secret.
+3. `docker-compose up -d --build` (or just `python3 mtprotoproxy.py` if you don't like Docker; note that
+   without Docker the placeholder secret is used as is, so set your own)
+4. *(get a link to share the proxy, it contains the generated secret)* `docker-compose logs`
+
+The secret is generated at image build time. Docker reuses cached layers, so to get a new secret
+rebuild with `docker-compose build --no-cache`. Config changes require a rebuild, since *config.py* is
+baked into the image. If you instead mount your own *config.py* as a volume, the generated secret is overridden.
 
 ![Demo](https://alexbers.com/mtprotoproxy/install_demo_v2.gif)
 
